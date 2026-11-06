@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Allenamento</title>
+<meta name="theme-color" content="#101418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Allenamento">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+:root {
+  --sfondo: #101418;
+  --carta: #1a2128;
+  --carta-2: #232c35;
+  --testo: #f2f5f7;
+  --testo-2: #a3afb9;
+  --linea: #2f3a45;
+  --accento: #2dd4bf;
+  --accento-testo: #06231f;
+  --ok: #34c759;
+  --ok-testo: #04200c;
+  --evid: #f0a050;
+  --errore: #ff6b6b;
+  --alto: env(safe-area-inset-top, 0px);
+  --basso: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--sfondo); color: var(--testo); }
+body {
+  font: 18px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  overscroll-behavior: none;
+}
+#app { height: 100dvh; display: flex; flex-direction: column; }
+h1, h2, h3, p { margin: 0; }
+button, input, textarea { font: inherit; color: inherit; }
+
+/* Pulsanti */
+.btn {
+  display: block; width: 100%; border: 0; border-radius: 16px;
+  padding: 16px 18px; font-weight: 700; font-size: 19px; text-align: center;
+  background: var(--carta-2); color: var(--testo); cursor: pointer;
+}
+.btn:active { transform: scale(.98); opacity: .9; }
+.btn.primario { background: var(--accento); color: var(--accento-testo); }
+.btn.ok { background: var(--ok); color: var(--ok-testo); }
+.btn.piccolo { padding: 11px 14px; font-size: 16px; border-radius: 12px; }
+.btn.testo { background: transparent; color: var(--testo-2); font-weight: 600; }
+.btn[disabled] { opacity: .45; }
+.fila { display: flex; gap: 10px; }
+.fila > * { flex: 1; }
+
+/* Home e schermate semplici */
+.pagina { flex: 1; overflow-y: auto; padding: calc(var(--alto) + 22px) 18px calc(var(--basso) + 28px); display: flex; flex-direction: column; gap: 14px; }
+.pagina h1 { font-size: 32px; letter-spacing: -.5px; }
+.sotto { color: var(--testo-2); font-size: 16px; }
+.carta { background: var(--carta); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.carta h2 { font-size: 22px; }
+.etichetta { font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--testo-2); font-weight: 700; }
+.avviso { background: #3a2a14; color: #ffd9a8; border-radius: 14px; padding: 12px 14px; font-size: 16px; }
+.errore { background: #3d1c1c; color: #ffc4c4; border-radius: 14px; padding: 12px 14px; font-size: 16px; }
+.infobox { background: var(--carta); border-radius: 16px; padding: 14px 16px; }
+.infobox h3 { font-size: 17px; margin-bottom: 4px; color: var(--accento); }
+.infobox p { font-size: 16px; color: var(--testo); }
+
+/* Allenamento */
+.barra { padding: calc(var(--alto) + 10px) 14px 8px; display: flex; align-items: center; gap: 10px; background: var(--sfondo); }
+.barra .titolo { flex: 1; text-align: center; font-weight: 700; }
+.barra .indietro { background: none; border: 0; color: var(--accento); font-weight: 700; font-size: 18px; padding: 8px 6px; min-width: 84px; text-align: left; }
+.barra .contatore { min-width: 84px; text-align: right; color: var(--testo-2); font-variant-numeric: tabular-nums; }
+.progresso { height: 4px; background: var(--linea); }
+.progresso > div { height: 100%; width: 0; background: var(--accento); transition: width .25s; }
+.scorri { flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; }
+.passo { min-height: 100%; scroll-snap-align: start; scroll-snap-stop: always; padding: 18px 16px calc(var(--basso) + 22px); display: flex; flex-direction: column; gap: 14px; }
+.passo h2 { font-size: 28px; line-height: 1.15; letter-spacing: -.3px; }
+.badge { align-self: flex-start; font-size: 13px; font-weight: 700; letter-spacing: .6px; padding: 5px 10px; border-radius: 999px; background: #3a2a14; color: var(--evid); }
+.badge.video { background: #12312d; color: var(--accento); }
+.tessere { display: flex; gap: 10px; flex-wrap: wrap; }
+.tessera { flex: 1 1 28%; min-width: 96px; background: var(--carta); border-radius: 16px; padding: 12px 14px; }
+.tessera .e { font-size: 12px; letter-spacing: 1.3px; color: var(--testo-2); font-weight: 700; }
+.tessera .v { font-size: 24px; font-weight: 800; margin-top: 2px; line-height: 1.15; }
+.tessera.evid { outline: 2px solid var(--evid); }
+.nota { background: var(--carta); border-left: 4px solid var(--accento); border-radius: 12px; padding: 12px 14px; font-size: 17px; }
+.campi { display: flex; gap: 10px; }
+.campo { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.campo label { font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--testo-2); font-weight: 700; }
+.campo input, .campo textarea, .area {
+  width: 100%; background: var(--carta); border: 2px solid var(--linea); border-radius: 14px;
+  padding: 13px 14px; font-size: 19px; outline: none;
+}
+.campo input:focus, .campo textarea:focus, .area:focus { border-color: var(--accento); }
+.campo textarea, .area { min-height: 84px; resize: none; font-size: 17px; }
+.video-box { background: var(--carta); border-radius: 18px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.video-box video { width: 100%; max-height: 38dvh; border-radius: 12px; background: #000; }
+.spazio { flex: 1; min-height: 4px; }
+.riepilogo { background: var(--carta); border-radius: 16px; padding: 14px 16px; white-space: pre-wrap; font-size: 15px; line-height: 1.45; max-height: 34dvh; overflow-y: auto; color: var(--testo-2); }
+.fatto-sigillo { color: var(--ok); font-weight: 800; }
+
+/* Registratore video */
+.sovra { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; flex-direction: column; }
+.sovra video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+.sovra .cima { position: absolute; top: 0; left: 0; right: 0; padding: calc(var(--alto) + 10px) 14px 10px; display: flex; justify-content: space-between; align-items: center; z-index: 2; background: linear-gradient(#000a, #0000); }
+.sovra .cima .nomeEs { font-weight: 700; font-size: 16px; text-shadow: 0 1px 4px #000; max-width: 62%; }
+.sovra .fondo { padding: 14px 16px calc(var(--basso) + 18px); display: flex; flex-direction: column; gap: 10px; background: #000; }
+.sovra .conto { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 150px; font-weight: 800; color: #fff; text-shadow: 0 2px 20px #000; pointer-events: none; z-index: 1; }
+.sovra .tempo { position: absolute; top: calc(var(--alto) + 58px); left: 0; right: 0; text-align: center; z-index: 2; font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; }
+.sovra .tempo span { background: #c0392b; padding: 4px 12px; border-radius: 999px; }
+.sovra .msg { color: #cfd8df; font-size: 16px; text-align: center; }
+.rec-btn { background: #e5484d; color: #fff; }
+.nascosto { display: none !important; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--basso) + 24px); z-index: 99; background: #f2f5f7; color: #101418; border-radius: 14px; padding: 14px 16px; font-weight: 600; text-align: center; box-shadow: 0 6px 24px #0008; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   Strumenti di base
+   ========================================================= */
+function h(tag, props, ...figli) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'value') e.value = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else e.setAttribute(k, v);
+  }
+  for (const c of figli.flat()) {
+    if (c == null || c === false) continue;
+    e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+const app = document.getElementById('app');
+const coach = () => (stato.scheda && stato.scheda.allenatore) || 'il tuo allenatore';
+const vuoto = (v) => !v || v === '–' || v === '-';
+
+function toast(testo, ms = 3200) {
+  const t = h('div', { class: 'toast', text: testo });
+  document.body.append(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+function slug(s) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'esercizio';
+}
+
+/* =========================================================
+   Archivio sul telefono (IndexedDB), con riserva in memoria
+   ========================================================= */
+const DB = {
+  db: null,
+  memoria: { kv: new Map(), video: new Map() },
+  persistente: false,
+  async apri() {
+    try {
+      await new Promise((ok, ko) => {
+        const r = indexedDB.open('allenamento', 1);
+        r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('video'); };
+        r.onsuccess = () => { this.db = r.result; ok(); };
+        r.onerror = () => ko(r.error);
+      });
+      this.persistente = true;
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    } catch (e) {
+      this.persistente = false;
+    }
+  },
+  tx(store, modo, fn) {
+    return new Promise((ok, ko) => {
+      const t = this.db.transaction(store, modo);
+      const rq = fn(t.objectStore(store));
+      t.oncomplete = () => ok(rq ? rq.result : undefined);
+      t.onerror = () => ko(t.error);
+      t.onabort = () => ko(t.error);
+    });
+  },
+  async get(store, k) { return this.persistente ? this.tx(store, 'readonly', (s) => s.get(k)) : this.memoria[store].get(k); },
+  async set(store, k, v) { return this.persistente ? this.tx(store, 'readwrite', (s) => s.put(v, k)) : void this.memoria[store].set(k, v); },
+  async del(store, k) { return this.persistente ? this.tx(store, 'readwrite', (s) => s.delete(k)) : void this.memoria[store].delete(k); },
+  async chiavi(store) { return this.persistente ? this.tx(store, 'readonly', (s) => s.getAllKeys()) : [...this.memoria[store].keys()]; }
+};
+
+/* =========================================================
+   Stato dell'app
+   ========================================================= */
+const stato = {
+  scheda: null,
+  sess: null,            // allenamento in corso
+  video: new Map(),      // indice esercizio -> { blob, tipo }
+  storico: [],
+  ultimoGiorno: null,
+  corrente: 0,
+  schermoAcceso: null
+};
+
+let timerSalva = null;
+function salvaSess() {
+  clearTimeout(timerSalva);
+  timerSalva = setTimeout(() => { DB.set('kv', 'sessione', stato.sess).catch(() => {}); }, 250);
+}
+
+async function caricaTutto() {
+  await DB.apri();
+  stato.scheda = (await DB.get('kv', 'scheda')) || null;
+  stato.sess = (await DB.get('kv', 'sessione')) || null;
+  stato.storico = (await DB.get('kv', 'storico')) || [];
+  const ug = await DB.get('kv', 'ultimoGiorno');
+  stato.ultimoGiorno = ug === undefined ? null : ug;
+  if (stato.sess && stato.scheda) await caricaVideoSessione();
+  else if (stato.sess) stato.sess = null;
+}
+
+async function caricaVideoSessione() {
+  stato.video.clear();
+  const n = stato.scheda.giorni[stato.sess.giorno]?.esercizi.length || 0;
+  for (let i = 0; i < n; i++) {
+    try {
+      const v = await DB.get('video', stato.sess.id + ':' + i);
+      if (v && v.blob) stato.video.set(i, v);
+    } catch (e) { /* ignora */ }
+  }
+}
+
+/* =========================================================
+   Scheda: caricamento da file
+   ========================================================= */
+function validaScheda(s) {
+  if (!s || !Array.isArray(s.giorni) || !s.giorni.length) return 'Nel file non trovo i giorni di allenamento.';
+  for (const g of s.giorni) {
+    if (!g.nome || !Array.isArray(g.esercizi) || !g.esercizi.length) return 'Un giorno della scheda non ha esercizi.';
+    for (const e of g.esercizi) if (!e.nome) return 'Un esercizio non ha il nome.';
+  }
+  return null;
+}
+
+async function importaScheda(file, contenitoreErrore) {
+  try {
+    const testo = await file.text();
+    const s = JSON.parse(testo);
+    const err = validaScheda(s);
+    if (err) throw new Error(err);
+    stato.scheda = s;
+    await DB.set('kv', 'scheda', s);
+    // una scheda nuova chiude l'eventuale allenamento rimasto a metà della vecchia
+    if (stato.sess) await eliminaSessione();
+    stato.ultimoGiorno = null;
+    await DB.set('kv', 'ultimoGiorno', null);
+    toast('Scheda caricata');
+    vistaHome();
+  } catch (e) {
+    contenitoreErrore.replaceChildren(h('div', { class: 'errore', text: 'Non riesco a leggere questo file. ' + (e.message || '') }));
+  }
+}
+
+function selettoreScheda(etichetta, classe, contenitoreErrore) {
+  const input = h('input', {
+    type: 'file', accept: '.json,application/json', class: 'nascosto',
+    onchange: (ev) => { const f = ev.target.files[0]; if (f) importaScheda(f, contenitoreErrore); }
+  });
+  const btn = h('button', { class: 'btn ' + classe, type: 'button', onclick: () => input.click(), text: etichetta });
+  return h('div', {}, btn, input);
+}
+
+/* =========================================================
+   Sessione di allenamento
+   ========================================================= */
+function nuovaSessione(giorno) {
+  const g = stato.scheda.giorni[giorno];
+  stato.sess = {
+    id: Date.now().toString(36),
+    giorno,
+    inizio: new Date().toISOString(),
+    es: g.esercizi.map(() => ({ fatto: false, kg: '', rep: '', note: '' })),
+    finale: ''
+  };
+  stato.video.clear();
+  stato.corrente = 0;
+  DB.set('kv', 'sessione', stato.sess).catch(() => {});
+}
+
+async function eliminaSessione() {
+  if (!stato.sess) return;
+  const id = stato.sess.id;
+  for (const i of stato.video.keys()) await DB.del('video', id + ':' + i).catch(() => {});
+  stato.video.clear();
+  stato.sess = null;
+  await DB.del('kv', 'sessione').catch(() => {});
+}
+
+function giornoProposto() {
+  const n = stato.scheda.giorni.length;
+  return stato.ultimoGiorno == null ? 0 : (stato.ultimoGiorno + 1) % n;
+}
+
+function dataLunga(iso) {
+  return new Date(iso).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function testoResoconto() {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const righe = [];
+  righe.push(`Resoconto ${g.nome} — ${dataLunga(stato.sess.inizio)}`);
+  righe.push(stato.scheda.atleta || '');
+  righe.push('');
+  g.esercizi.forEach((es, i) => {
+    const d = stato.sess.es[i];
+    const ha = d.kg || d.rep || d.note;
+    if (!d.fatto && !ha) { righe.push(`✗ ${es.nome} — non fatto`); return; }
+    const parti = [];
+    if (d.kg) parti.push('kg: ' + d.kg);
+    if (d.rep) parti.push('rip: ' + d.rep);
+    if (d.note) parti.push('note: ' + d.note);
+    if (stato.video.has(i)) parti.push('video 🎥');
+    righe.push(`✓ ${es.nome}${parti.length ? ' — ' + parti.join(' · ') : ''}`);
+  });
+  if (stato.sess.finale.trim()) { righe.push(''); righe.push('Per ' + coach() + ': ' + stato.sess.finale.trim()); }
+  return righe.join('\n');
+}
+
+function estensione(tipo) {
+  if (!tipo) return 'mp4';
+  if (tipo.includes('mp4')) return 'mp4';
+  if (tipo.includes('quicktime')) return 'mov';
+  if (tipo.includes('webm')) return 'webm';
+  return 'mp4';
+}
+
+function fileVideo(i) {
+  const v = stato.video.get(i);
+  if (!v) return null;
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const n = String(i + 1).padStart(2, '0');
+  const data = stato.sess.inizio.slice(0, 10);
+  const nome = `${slug(g.nome)}_${n}_${slug(g.esercizi[i].nome)}_${data}.${estensione(v.tipo)}`;
+  return new File([v.blob], nome, { type: v.tipo || 'video/mp4' });
+}
+
+async function condividi({ files = [], text = '', title = '' }) {
+  try {
+    if (files.length && navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, text, title });
+      return true;
+    }
+    if (!files.length && navigator.share) {
+      await navigator.share({ text, title });
+      return true;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return false;   // l'utente ha chiuso il foglio
+  }
+  // Se la condivisione non è disponibile: salva i file e copia il testo
+  try { if (text && navigator.clipboard) await navigator.clipboard.writeText(text); } catch (e) { /* ignora */ }
+  for (const f of files) {
+    const url = URL.createObjectURL(f);
+    const a = h('a', { href: url, download: f.name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+  toast('La condivisione non è disponibile qui: ho scaricato i file e copiato il testo.');
+  return false;
+}
+
+async function copiaTesto(t) {
+  try { await navigator.clipboard.writeText(t); toast('Resoconto copiato: incollalo nella chat con ' + coach()); }
+  catch (e) { toast('Non sono riuscito a copiare. Tieni premuto sul testo per selezionarlo.'); }
+}
+
+/* Tiene lo schermo acceso durante l'allenamento */
+async function schermoAcceso(attivo) {
+  try {
+    if (attivo && 'wakeLock' in navigator) {
+      if (!stato.schermoAcceso) stato.schermoAcceso = await navigator.wakeLock.request('screen');
+    } else if (!attivo && stato.schermoAcceso) {
+      await stato.schermoAcceso.release(); stato.schermoAcceso = null;
+    }
+  } catch (e) { stato.schermoAcceso = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && stato.vista === 'allenamento') { stato.schermoAcceso = null; schermoAcceso(true); }
+});
+
+/* =========================================================
+   Schermata: Home
+   ========================================================= */
+function vistaHome() {
+  stato.vista = 'home';
+  schermoAcceso(false);
+  const errori = h('div');
+  const pag = h('div', { class: 'pagina' });
+
+  pag.append(h('div', {},
+    h('h1', { text: 'Allenamento' }),
+    h('p', { class: 'sotto', text: stato.scheda ? `${stato.scheda.atleta || ''} · ${stato.scheda.periodo || ''}` : 'La tua scheda, un esercizio alla volta.' })
+  ));
+
+  if (!DB.persistente) {
+    pag.append(h('div', { class: 'avviso', text: 'Attenzione: su questo telefono non riesco a salvare i dati. Se chiudi l\'app perdi quello che hai inserito.' }));
+  }
+
+  if (!stato.scheda) {
+    pag.append(h('div', { class: 'carta' },
+      h('h2', { text: 'Per iniziare serve la scheda' }),
+      h('p', { class: 'sotto', text: 'Tocca il pulsante e scegli il file della scheda (quello che ti ho preparato, con estensione .json). Se lo hai ricevuto con AirDrop lo trovi nell\'app File, nella cartella Download.' }),
+      selettoreScheda('Carica la scheda', 'primario', errori),
+      errori
+    ));
+  } else {
+    const s = stato.scheda;
+    if (stato.sess) {
+      const g = s.giorni[stato.sess.giorno];
+      const fatti = stato.sess.es.filter((x) => x.fatto).length;
+      pag.append(h('div', { class: 'carta' },
+        h('span', { class: 'etichetta', text: 'Allenamento in corso' }),
+        h('h2', { text: g.nome }),
+        h('p', { class: 'sotto', text: `Fatti ${fatti} esercizi su ${g.esercizi.length} · iniziato ${new Date(stato.sess.inizio).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` }),
+        h('button', { class: 'btn primario', type: 'button', text: 'Riprendi', onclick: () => vistaAllenamento() }),
+        h('button', { class: 'btn testo piccolo', type: 'button', text: 'Annulla e ricomincia da capo', onclick: async () => {
+          if (confirm('Cancello questo allenamento, con i video registrati? Non si può annullare.')) { await eliminaSessione(); vistaHome(); }
+        } })
+      ));
+    } else {
+      const p = giornoProposto();
+      const altri = s.giorni.map((g, i) => i).filter((i) => i !== p);
+      pag.append(h('div', { class: 'carta' },
+        h('span', { class: 'etichetta', text: stato.ultimoGiorno == null ? 'Si parte da qui' : 'Oggi tocca' }),
+        h('h2', { text: s.giorni[p].nome }),
+        h('p', { class: 'sotto', text: `${s.giorni[p].esercizi.length} esercizi` }),
+        h('button', { class: 'btn primario', type: 'button', text: `Inizia ${s.giorni[p].nome}`, onclick: () => { nuovaSessione(p); vistaAllenamento(); } }),
+        altri.map((i) => h('button', { class: 'btn testo piccolo', type: 'button', text: `Faccio invece ${s.giorni[i].nome}`, onclick: () => { nuovaSessione(i); vistaAllenamento(); } }))
+      ));
+    }
+
+    if (s.obiettivi) pag.append(h('div', { class: 'infobox' }, h('h3', { text: 'Obiettivi' }), h('p', { text: s.obiettivi })));
+
+    pag.append(h('button', { class: 'btn', type: 'button', text: 'Info utili di ' + coach(), onclick: vistaInfo }));
+    pag.append(h('button', { class: 'btn', type: 'button', text: `Allenamenti passati (${stato.storico.length})`, onclick: vistaStorico }));
+    pag.append(selettoreScheda('Carica una scheda nuova', 'testo piccolo', errori), errori);
+  }
+
+  app.replaceChildren(pag);
+}
+
+/* =========================================================
+   Schermate: Info utili e Allenamenti passati
+   ========================================================= */
+function barraSemplice(titolo) {
+  return h('div', { class: 'barra' },
+    h('button', { class: 'indietro', type: 'button', text: '‹ Indietro', onclick: vistaHome }),
+    h('div', { class: 'titolo', text: titolo }),
+    h('div', { class: 'contatore' })
+  );
+}
+
+function vistaInfo() {
+  stato.vista = 'info';
+  const s = stato.scheda;
+  const pag = h('div', { class: 'pagina' });
+  if (s.prima_di_iniziare) pag.append(h('div', { class: 'infobox' }, h('h3', { text: 'Prima di iniziare' }), h('p', { text: s.prima_di_iniziare })));
+  (s.info_utili || []).forEach((i) => pag.append(h('div', { class: 'infobox' }, h('h3', { text: i.titolo }), h('p', { text: i.testo }))));
+  if (!(s.info_utili || []).length) pag.append(h('p', { class: 'sotto', text: 'Nella scheda non ci sono info utili.' }));
+  app.replaceChildren(barraSemplice('Info utili'), pag);
+}
+
+function vistaStorico() {
+  stato.vista = 'storico';
+  const pag = h('div', { class: 'pagina' });
+  if (!stato.storico.length) pag.append(h('p', { class: 'sotto', text: 'Non hai ancora chiuso nessun allenamento.' }));
+  stato.storico.forEach((r) => {
+    pag.append(h('div', { class: 'carta' },
+      h('span', { class: 'etichetta', text: dataLunga(r.data) }),
+      h('h2', { text: r.giorno }),
+      h('div', { class: 'riepilogo', text: r.testo }),
+      h('button', { class: 'btn piccolo', type: 'button', text: 'Copia questo resoconto', onclick: () => copiaTesto(r.testo) })
+    ));
+  });
+  app.replaceChildren(barraSemplice('Allenamenti passati'), pag);
+}
+
+/* =========================================================
+   Schermata: Allenamento (un esercizio per volta)
+   ========================================================= */
+function vistaAllenamento() {
+  stato.vista = 'allenamento';
+  schermoAcceso(true);
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const tot = g.esercizi.length;
+
+  const contatore = h('div', { class: 'contatore', text: `1 / ${tot}` });
+  const barraProg = h('div', {});
+  const scorri = h('div', { class: 'scorri' });
+
+  g.esercizi.forEach((es, i) => scorri.append(creaPasso(i)));
+  scorri.append(creaFine());
+
+  app.replaceChildren(
+    h('div', { class: 'barra' },
+      h('button', { class: 'indietro', type: 'button', text: '‹ Esci', onclick: vistaHome }),
+      h('div', { class: 'titolo', text: g.nome }),
+      contatore
+    ),
+    h('div', { class: 'progresso' }, barraProg),
+    scorri
+  );
+
+  const aggiorna = (i) => {
+    stato.corrente = i;
+    contatore.textContent = i >= tot ? 'Fine' : `${i + 1} / ${tot}`;
+    barraProg.style.width = Math.min(100, (stato.sess.es.filter((x) => x.fatto).length / tot) * 100) + '%';
+  };
+  aggiorna(Math.min(stato.corrente, tot));
+
+  const passi = [...scorri.children];
+  const osserva = new IntersectionObserver((voci) => {
+    voci.forEach((v) => { if (v.isIntersecting) aggiorna(passi.indexOf(v.target)); });
+  }, { root: scorri, threshold: 0.6 });
+  passi.forEach((p) => osserva.observe(p));
+  scorri._aggiorna = () => aggiorna(stato.corrente);
+
+  // torna all'esercizio in cui eri
+  requestAnimationFrame(() => { const p = passi[Math.min(stato.corrente, passi.length - 1)]; if (p) scorri.scrollTop = p.offsetTop; });
+}
+
+function vaiAvanti(da) {
+  const scorri = document.querySelector('.scorri');
+  const passi = [...scorri.children];
+  const p = passi[da + 1];
+  if (p) scorri.scrollTo({ top: p.offsetTop, behavior: 'smooth' });
+}
+
+function aggiornaProgresso() {
+  const scorri = document.querySelector('.scorri');
+  if (scorri && scorri._aggiorna) scorri._aggiorna();
+}
+
+function creaPasso(i) {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const es = g.esercizi[i];
+  const d = stato.sess.es[i];
+  const passo = h('section', { class: 'passo', 'data-i': i });
+
+  passo.append(h('h2', { text: es.nome }));
+
+  const tessere = [];
+  if (!vuoto(es.serie_rep)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'SERIE × REP' }), h('div', { class: 'v', text: es.serie_rep })));
+  if (!vuoto(es.carico)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'CARICO' }), h('div', { class: 'v', text: es.carico })));
+  if (!vuoto(es.rest)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'RECUPERO' }), h('div', { class: 'v', text: es.rest })));
+  if (tessere.length) passo.append(h('div', { class: 'tessere' }, tessere));
+  if (es.nota) passo.append(h('div', { class: 'nota', text: es.nota }));
+
+  if (es.video) passo.append(creaBloccoVideo(i, passo));
+
+  // Dati da riportare nel resoconto: solo dove ha senso
+  if (es.video || !vuoto(es.carico) || !vuoto(es.serie_rep)) {
+    passo.append(h('div', { class: 'campi' },
+      h('div', { class: 'campo' },
+        h('label', { text: 'Kg fatti' }),
+        h('input', { type: 'text', inputmode: 'decimal', placeholder: 'es. 70', value: d.kg, oninput: (e) => { d.kg = e.target.value; salvaSess(); } })
+      ),
+      h('div', { class: 'campo' },
+        h('label', { text: 'Ripetizioni' }),
+        h('input', { type: 'text', placeholder: 'es. 8, 8, 7', value: d.rep, oninput: (e) => { d.rep = e.target.value; salvaSess(); } })
+      )
+    ));
+    passo.append(h('div', { class: 'campo' },
+      h('label', { text: 'Note o fastidi (facoltativo)' }),
+      h('input', { type: 'text', placeholder: 'es. fastidio alla spalla', value: d.note, oninput: (e) => { d.note = e.target.value; salvaSess(); } })
+    ));
+  }
+
+  passo.append(h('div', { class: 'spazio' }));
+
+  const pulsanteFatto = h('button', { class: 'btn ok', type: 'button' });
+  const salta = h('button', { class: 'btn testo piccolo', type: 'button', text: 'Salta questo esercizio', onclick: () => vaiAvanti(i) });
+  const disegna = () => {
+    pulsanteFatto.textContent = d.fatto ? '✓ Fatto — avanti' : 'Fatto — avanti';
+    salta.classList.toggle('nascosto', d.fatto);
+  };
+  pulsanteFatto.addEventListener('click', () => {
+    d.fatto = true; disegna(); salvaSess(); aggiornaProgresso(); vaiAvanti(i);
+  });
+  disegna();
+  passo.append(pulsanteFatto, salta);
+  return passo;
+}
+
+function creaBloccoVideo(i, passo) {
+  const box = h('div', { class: 'video-box' });
+  const disegna = () => {
+    box.replaceChildren();
+    const v = stato.video.get(i);
+    if (!v) {
+      box.append(
+        h('button', { class: 'btn primario', type: 'button', text: '🎥 Filma l\'ultima serie', onclick: () => apriRegistratore(i, disegna) })
+      );
+    } else {
+      const url = URL.createObjectURL(v.blob);
+      const el = h('video', { src: url, controls: true, playsinline: true, preload: 'metadata' });
+      el.addEventListener('loadedmetadata', () => { /* pronto */ });
+      box.append(
+        h('span', { class: 'fatto-sigillo', text: '✓ Video pronto' }),
+        el,
+        h('div', { class: 'fila' },
+          h('button', { class: 'btn piccolo', type: 'button', text: 'Rifai', onclick: () => apriRegistratore(i, disegna) }),
+          h('button', { class: 'btn piccolo primario', type: 'button', text: 'Invia a ' + coach(), onclick: () => inviaUnVideo(i) })
+        )
+      );
+    }
+  };
+  disegna();
+  return box;
+}
+
+async function inviaUnVideo(i) {
+  const f = fileVideo(i);
+  if (!f) return;
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  await condividi({ files: [f], text: `${g.nome} — ${g.esercizi[i].nome}`, title: g.esercizi[i].nome });
+}
+
+function creaFine() {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const passo = h('section', { class: 'passo', 'data-i': 'fine' });
+  const riepilogo = h('div', { class: 'riepilogo' });
+  const info = h('p', { class: 'sotto' });
+  const aggiorna = () => {
+    riepilogo.textContent = testoResoconto();
+    const nf = stato.sess.es.filter((x) => x.fatto).length;
+    info.textContent = `Esercizi fatti: ${nf} su ${g.esercizi.length} · Video pronti: ${stato.video.size}`;
+  };
+  passo._aggiorna = aggiorna;
+  aggiorna();
+
+  const finale = h('textarea', {
+    class: 'area', placeholder: 'Un messaggio per ' + coach() + ' (sensazioni, fastidi, domande)…', value: stato.sess.finale,
+    oninput: (e) => { stato.sess.finale = e.target.value; salvaSess(); riepilogo.textContent = testoResoconto(); }
+  });
+
+  passo.append(
+    h('h2', { text: 'Allenamento finito' }),
+    info,
+    finale,
+    h('div', { class: 'etichetta', text: 'Anteprima del resoconto' }),
+    riepilogo,
+    h('div', { class: 'spazio' }),
+    h('button', { class: 'btn primario', type: 'button', text: 'Invia video e resoconto a ' + coach(), onclick: async () => {
+      aggiorna();
+      const files = [];
+      for (const i of [...stato.video.keys()].sort((a, b) => a - b)) { const f = fileVideo(i); if (f) files.push(f); }
+      await condividi({ files, text: testoResoconto(), title: 'Resoconto ' + g.nome });
+    } }),
+    h('p', { class: 'sotto', text: 'Si apre il foglio di condivisione: scegli Telegram e poi la chat di ' + coach() + '. Se il testo non compare, usa "Copia resoconto" e incollalo nella chat.' }),
+    h('div', { class: 'fila' },
+      h('button', { class: 'btn piccolo', type: 'button', text: 'Copia resoconto', onclick: () => { aggiorna(); copiaTesto(testoResoconto()); } }),
+      h('button', { class: 'btn piccolo', type: 'button', text: 'Solo testo a ' + coach(), onclick: () => condividi({ text: testoResoconto(), title: 'Resoconto ' + g.nome }) })
+    ),
+    h('button', { class: 'btn ok', type: 'button', text: 'Ho inviato tutto: chiudi l\'allenamento', onclick: chiudiAllenamento })
+  );
+  // quando la sezione "fine" torna visibile aggiorna i numeri
+  const obs = new IntersectionObserver((voci) => { if (voci.some((v) => v.isIntersecting)) aggiorna(); }, { threshold: 0.3 });
+  setTimeout(() => obs.observe(passo), 0);
+  return passo;
+}
+
+async function chiudiAllenamento() {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const nv = stato.video.size;
+  const msg = nv
+    ? `Chiudo l'allenamento? I ${nv} video registrati vengono cancellati dal telefono. Assicurati di averli inviati a ${coach()}.`
+    : 'Chiudo l\'allenamento?';
+  if (!confirm(msg)) return;
+  stato.storico.unshift({ id: stato.sess.id, giorno: g.nome, data: stato.sess.inizio, testo: testoResoconto() });
+  stato.storico = stato.storico.slice(0, 60);
+  stato.ultimoGiorno = stato.sess.giorno;
+  await DB.set('kv', 'storico', stato.storico).catch(() => {});
+  await DB.set('kv', 'ultimoGiorno', stato.ultimoGiorno).catch(() => {});
+  await eliminaSessione();
+  toast('Allenamento chiuso. Bel lavoro!');
+  vistaHome();
+}
+
+/* =========================================================
+   Registratore video
+   ========================================================= */
+function tipoSupportato() {
+  if (!window.MediaRecorder) return '';
+  const prove = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return prove.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+}
+
+async function salvaVideo(i, blob, tipo) {
+  stato.video.set(i, { blob, tipo: tipo || blob.type || 'video/mp4' });
+  try { await DB.set('video', stato.sess.id + ':' + i, stato.video.get(i)); }
+  catch (e) { toast('Video non salvato sul telefono: invialo subito.'); }
+}
+
+function apriRegistratore(i, alTermine) {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  const es = g.esercizi[i];
+  let stream = null, rec = null, pezzi = [], facing = 'environment';
+  let intervallo = null, inizioRec = 0, blobPronto = null, tipoPronto = '';
+  const MAX = 90;
+
+  const sovra = h('div', { class: 'sovra' });
+  document.body.append(sovra);
+
+  const chiudi = () => {
+    clearInterval(intervallo);
+    try { if (rec && rec.state !== 'inactive') { rec.onstop = null; rec.stop(); } } catch (e) { /* ignora */ }
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    sovra.remove();
+  };
+
+  const inputSistema = (cattura) => h('input', {
+    type: 'file', accept: 'video/*', class: 'nascosto', ...(cattura ? { capture: 'environment' } : {}),
+    onchange: async (e) => { const f = e.target.files[0]; if (f) { await salvaVideo(i, f, f.type); chiudi(); alTermine(); } }
+  });
+
+  const apriFotocamera = async () => {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true
+    });
+  };
+
+  const schermataPronto = async (errore) => {
+    clearInterval(intervallo);
+    sovra.replaceChildren();
+    const cima = h('div', { class: 'cima' },
+      h('div', { class: 'nomeEs', text: es.nome }),
+      h('button', { class: 'btn piccolo', type: 'button', style: 'width:auto', text: 'Chiudi', onclick: chiudi })
+    );
+    const supporto = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+    const sis1 = inputSistema(true), sis2 = inputSistema(false);
+
+    if (!supporto || errore) {
+      sovra.append(cima, h('div', { style: 'flex:1' }),
+        h('div', { class: 'fondo' },
+          h('p', { class: 'msg', text: errore ? 'Non riesco ad aprire la fotocamera dall\'app. Controlla in Impostazioni che il permesso sia attivo, oppure usa la fotocamera del telefono.' : 'La registrazione dentro l\'app non è disponibile: usa la fotocamera del telefono.' }),
+          h('button', { class: 'btn primario', type: 'button', text: 'Apri la fotocamera del telefono', onclick: () => sis1.click() }),
+          h('button', { class: 'btn', type: 'button', text: 'Scegli un video già girato', onclick: () => sis2.click() }),
+          sis1, sis2
+        ));
+      return;
+    }
+
+    try { await apriFotocamera(); }
+    catch (e) { return schermataPronto(true); }
+
+    const anteprima = h('video', { muted: true, playsinline: true, autoplay: true });
+    anteprima.srcObject = stream;
+    anteprima.muted = true;
+    if (facing === 'user') anteprima.style.transform = 'scaleX(-1)';
+
+    const conto = h('div', { class: 'conto nascosto' });
+    const tempo = h('div', { class: 'tempo nascosto' }, h('span', { text: '● 0:00' }));
+    const fondo = h('div', { class: 'fondo' });
+
+    const mostraPronto = () => {
+      fondo.replaceChildren(
+        h('p', { class: 'msg', text: 'Appoggia il telefono, poi parti. Filma solo l\'ultima serie.' }),
+        h('button', { class: 'btn rec-btn', type: 'button', text: '● Parti tra 5 secondi', onclick: () => avvia(5) }),
+        h('div', { class: 'fila' },
+          h('button', { class: 'btn piccolo', type: 'button', text: 'Parti subito', onclick: () => avvia(0) }),
+          h('button', { class: 'btn piccolo', type: 'button', text: 'Gira camera', onclick: async () => { facing = facing === 'environment' ? 'user' : 'environment'; schermataPronto(); } })
+        ),
+        h('button', { class: 'btn testo piccolo', type: 'button', text: 'Uso la fotocamera del telefono', onclick: () => sis1.click() }),
+        sis1, sis2
+      );
+    };
+
+    const avvia = (secondi) => {
+      let resto = secondi;
+      const parti = () => {
+        conto.classList.add('nascosto');
+        const tipo = tipoSupportato();
+        pezzi = [];
+        try { rec = new MediaRecorder(stream, { ...(tipo ? { mimeType: tipo } : {}), videoBitsPerSecond: 2500000 }); }
+        catch (e) { rec = new MediaRecorder(stream); }
+        rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) pezzi.push(ev.data); };
+        rec.onstop = () => {
+          clearInterval(intervallo);
+          tipoPronto = rec.mimeType || tipo || 'video/mp4';
+          blobPronto = new Blob(pezzi, { type: tipoPronto });
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+          schermataRivedi();
+        };
+        rec.start(1000);
+        inizioRec = Date.now();
+        tempo.classList.remove('nascosto');
+        intervallo = setInterval(() => {
+          const s = Math.floor((Date.now() - inizioRec) / 1000);
+          tempo.firstChild.textContent = `● ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+          if (s >= MAX && rec.state === 'recording') rec.stop();
+        }, 250);
+        fondo.replaceChildren(
+          h('button', { class: 'btn rec-btn', type: 'button', text: '■ Ferma', onclick: () => { if (rec.state === 'recording') rec.stop(); } })
+        );
+      };
+      if (secondi === 0) return parti();
+      conto.classList.remove('nascosto');
+      conto.textContent = resto;
+      fondo.replaceChildren(h('button', { class: 'btn', type: 'button', text: 'Annulla', onclick: () => { clearInterval(intervallo); conto.classList.add('nascosto'); mostraPronto(); } }));
+      intervallo = setInterval(() => {
+        resto -= 1;
+        if (resto <= 0) { clearInterval(intervallo); parti(); } else conto.textContent = resto;
+      }, 1000);
+    };
+
+    sovra.replaceChildren(cima, anteprima, conto, tempo, fondo);
+    mostraPronto();
+  };
+
+  const schermataRivedi = () => {
+    const url = URL.createObjectURL(blobPronto);
+    sovra.replaceChildren(
+      h('div', { class: 'cima' }, h('div', { class: 'nomeEs', text: es.nome }), h('span')),
+      h('video', { src: url, controls: true, playsinline: true, autoplay: true }),
+      h('div', { class: 'fondo' },
+        h('p', { class: 'msg', text: 'Guardalo: se va bene, tienilo.' }),
+        h('button', { class: 'btn primario', type: 'button', text: 'Tieni questo video', onclick: async () => {
+          await salvaVideo(i, blobPronto, tipoPronto); URL.revokeObjectURL(url); chiudi(); alTermine();
+        } }),
+        h('button', { class: 'btn', type: 'button', text: 'Rifai', onclick: () => { URL.revokeObjectURL(url); schermataPronto(); } })
+      )
+    );
+  };
+
+  schermataPronto();
+}
+
+/* =========================================================
+   Avvio
+   ========================================================= */
+(async () => {
+  try { await caricaTutto(); } catch (e) { /* si parte comunque */ }
+  vistaHome();
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
