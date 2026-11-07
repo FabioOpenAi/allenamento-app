@@ -142,7 +142,11 @@ function h(tag, props, ...figli) {
   return e;
 }
 const app = document.getElementById('app');
-const coach = () => (stato.scheda && stato.scheda.allenatore) || 'il tuo allenatore';
+const coachNome = () => (stato.scheda && stato.scheda.allenatore) || '';
+const coachDi = () => coachNome() ? 'di ' + coachNome() : "dell'allenatore";
+const coachA = () => coachNome() ? 'a ' + coachNome() : "all'allenatore";
+const coachPer = () => coachNome() ? 'per ' + coachNome() : "per l'allenatore";
+const coachCon = () => coachNome() ? 'con ' + coachNome() : "con l'allenatore";
 const vuoto = (v) => !v || v === '–' || v === '-';
 
 function toast(testo, ms = 3200) {
@@ -363,7 +367,7 @@ function testoResoconto() {
     if (stato.video.has(i)) parti.push('video 🎥');
     righe.push(`✓ ${es.nome}${parti.length ? ' — ' + parti.join(' · ') : ''}`);
   });
-  if (stato.sess.finale.trim()) { righe.push(''); righe.push('Per ' + coach() + ': ' + stato.sess.finale.trim()); }
+  if (stato.sess.finale.trim()) { righe.push(''); righe.push(coachPer().replace(/^p/, 'P') + ': ' + stato.sess.finale.trim()); }
   return righe.join('\n');
 }
 
@@ -411,7 +415,7 @@ async function condividi({ files = [], text = '', title = '' }) {
 }
 
 async function copiaTesto(t) {
-  try { await navigator.clipboard.writeText(t); toast('Resoconto copiato: incollalo nella chat con ' + coach()); }
+  try { await navigator.clipboard.writeText(t); toast('Resoconto copiato: incollalo nella chat ' + coachCon()); }
   catch (e) { toast('Non sono riuscito a copiare. Tieni premuto sul testo per selezionarlo.'); }
 }
 
@@ -487,7 +491,7 @@ function vistaHome() {
 
     if (s.obiettivi) pag.append(h('div', { class: 'infobox' }, h('h3', { text: 'Obiettivi' }), h('p', { text: s.obiettivi })));
 
-    pag.append(h('button', { class: 'btn', type: 'button', text: 'Info utili di ' + coach(), onclick: vistaInfo }));
+    pag.append(h('button', { class: 'btn', type: 'button', text: 'Info utili ' + coachDi(), onclick: vistaInfo }));
     pag.append(h('button', { class: 'btn', type: 'button', text: `Allenamenti passati (${stato.storico.length})`, onclick: vistaStorico }));
     pag.append(selettoreScheda('Carica una scheda nuova', 'testo piccolo', errori), errori);
   }
@@ -656,7 +660,7 @@ function creaBloccoVideo(i, passo) {
         el,
         h('div', { class: 'fila' },
           h('button', { class: 'btn piccolo', type: 'button', text: 'Rifai', onclick: () => apriRegistratore(i, disegna) }),
-          h('button', { class: 'btn piccolo primario', type: 'button', text: 'Invia a ' + coach(), onclick: () => inviaUnVideo(i) })
+          h('button', { class: 'btn piccolo primario', type: 'button', text: 'Invia ' + coachA(), onclick: () => inviaUnVideo(i) })
         )
       );
     }
@@ -686,7 +690,7 @@ function creaFine() {
   aggiorna();
 
   const finale = h('textarea', {
-    class: 'area', placeholder: 'Un messaggio per ' + coach() + ' (sensazioni, fastidi, domande)…', value: stato.sess.finale,
+    class: 'area', placeholder: 'Un messaggio ' + coachPer() + ' (sensazioni, fastidi, domande)…', value: stato.sess.finale,
     oninput: (e) => { stato.sess.finale = e.target.value; salvaSess(); riepilogo.textContent = testoResoconto(); }
   });
 
@@ -697,16 +701,16 @@ function creaFine() {
     h('div', { class: 'etichetta', text: 'Anteprima del resoconto' }),
     riepilogo,
     h('div', { class: 'spazio' }),
-    h('button', { class: 'btn primario', type: 'button', text: 'Invia video e resoconto a ' + coach(), onclick: async () => {
+    h('button', { class: 'btn primario', type: 'button', text: 'Invia video e resoconto ' + coachA(), onclick: async () => {
       aggiorna();
       const files = [];
       for (const i of [...stato.video.keys()].sort((a, b) => a - b)) { const f = fileVideo(i); if (f) files.push(f); }
       await condividi({ files, text: testoResoconto(), title: 'Resoconto ' + g.nome });
     } }),
-    h('p', { class: 'sotto', text: 'Si apre il foglio di condivisione: scegli Telegram e poi la chat di ' + coach() + '. Se il testo non compare, usa "Copia resoconto" e incollalo nella chat.' }),
+    h('p', { class: 'sotto', text: 'Si apre il foglio di condivisione: scegli Telegram e poi la chat ' + coachDi() + '. Se il testo non compare, usa "Copia resoconto" e incollalo nella chat.' }),
     h('div', { class: 'fila' },
       h('button', { class: 'btn piccolo', type: 'button', text: 'Copia resoconto', onclick: () => { aggiorna(); copiaTesto(testoResoconto()); } }),
-      h('button', { class: 'btn piccolo', type: 'button', text: 'Solo testo a ' + coach(), onclick: () => condividi({ text: testoResoconto(), title: 'Resoconto ' + g.nome }) })
+      h('button', { class: 'btn piccolo', type: 'button', text: 'Solo testo ' + coachA(), onclick: () => condividi({ text: testoResoconto(), title: 'Resoconto ' + g.nome }) })
     ),
     h('button', { class: 'btn ok', type: 'button', text: 'Ho inviato tutto: chiudi l\'allenamento', onclick: chiudiAllenamento })
   );
@@ -720,7 +724,7 @@ async function chiudiAllenamento() {
   const g = stato.scheda.giorni[stato.sess.giorno];
   const nv = stato.video.size;
   const msg = nv
-    ? `Chiudo l'allenamento? I ${nv} video registrati vengono cancellati dal telefono. Assicurati di averli inviati a ${coach()}.`
+    ? `Chiudo l'allenamento? I ${nv} video registrati vengono cancellati dal telefono. Assicurati di averli inviati ${coachA()}.`
     : 'Chiudo l\'allenamento?';
   if (!confirm(msg)) return;
   stato.storico.unshift({ id: stato.sess.id, giorno: g.nome, data: stato.sess.inizio, testo: testoResoconto() });
