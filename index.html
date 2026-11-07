@@ -233,6 +233,33 @@ async function caricaVideoSessione() {
   }
 }
 
+/* Scheda di esempio per provare l'app: esercizi inventati, nessun dato personale */
+const SCHEDA_ESEMPIO = {
+  atleta: 'Prova',
+  periodo: 'Scheda di esempio',
+  obiettivi: 'Scheda di prova per capire come funziona l\'app: scorri gli esercizi, registra un video e prepara il resoconto.',
+  prima_di_iniziare: 'Questa è una scheda di esempio, non un programma di allenamento vero.',
+  giorni: [
+    { nome: 'Giorno 1', esercizi: [
+      { nome: 'Riscaldamento a terra', serie_rep: '–', carico: '–', rest: '–', nota: 'Esercizio senza video: tocca "Fatto" e vai avanti.', video: false },
+      { nome: 'Squat a corpo libero', serie_rep: '3 × 10-12', carico: '–', rest: '1\'', nota: 'Prova a filmare l\'ultima serie con il pulsante verde acqua.', video: true },
+      { nome: 'Panca con manubri', serie_rep: '3 × 8-10', carico: '12 kg', rest: '1\'30"', nota: 'Scrivi qui sotto quanti kg e ripetizioni hai fatto davvero.', video: true },
+      { nome: 'Rematore con elastico', serie_rep: '2 × 12', carico: '–', rest: '–', nota: '', video: true },
+      { nome: 'Plank', serie_rep: '3 × 30"', carico: '–', rest: '40"', nota: 'Alla fine dell\'ultimo esercizio trovi il resoconto da inviare.', video: true }
+    ] },
+    { nome: 'Giorno 2', esercizi: [
+      { nome: 'Riscaldamento a terra', serie_rep: '–', carico: '–', rest: '–', nota: '', video: false },
+      { nome: 'Affondi', serie_rep: '3 × 8 x lato', carico: '–', rest: '1\'', nota: '', video: true },
+      { nome: 'Trazioni con elastico', serie_rep: '3 × 6-8', carico: '–', rest: '1\'30"', nota: '', video: true },
+      { nome: 'Ponte glutei', serie_rep: '2 × 12', carico: '–', rest: '–', nota: '', video: true }
+    ] }
+  ],
+  info_utili: [
+    { titolo: 'Video', testo: 'Filma l\'ultima serie di ogni esercizio. Il video parte dopo 5 secondi: appoggia il telefono e premi Ferma quando hai finito.' },
+    { titolo: 'Resoconto', testo: 'Segna i kg e le ripetizioni fatte: a fine allenamento l\'app prepara il riepilogo da mandare all\'allenatore.' }
+  ]
+};
+
 /* =========================================================
    Scheda: caricamento da file
    ========================================================= */
@@ -245,28 +272,39 @@ function validaScheda(s) {
   return null;
 }
 
+async function applicaScheda(s) {
+  stato.scheda = s;
+  await DB.set('kv', 'scheda', s);
+  // una scheda nuova chiude l'eventuale allenamento rimasto a metà della vecchia
+  if (stato.sess) await eliminaSessione();
+  stato.ultimoGiorno = null;
+  await DB.set('kv', 'ultimoGiorno', null);
+}
+
 async function importaScheda(file, contenitoreErrore) {
-  try {
-    const testo = await file.text();
-    const s = JSON.parse(testo);
-    const err = validaScheda(s);
-    if (err) throw new Error(err);
-    stato.scheda = s;
-    await DB.set('kv', 'scheda', s);
-    // una scheda nuova chiude l'eventuale allenamento rimasto a metà della vecchia
-    if (stato.sess) await eliminaSessione();
-    stato.ultimoGiorno = null;
-    await DB.set('kv', 'ultimoGiorno', null);
-    toast('Scheda caricata');
-    vistaHome();
-  } catch (e) {
-    contenitoreErrore.replaceChildren(h('div', { class: 'errore', text: 'Non riesco a leggere questo file. ' + (e.message || '') }));
-  }
+  const nonValido = (testo) => contenitoreErrore.replaceChildren(h('div', { class: 'errore' },
+    h('p', { text: testo }),
+    h('p', { text: 'Questa app legge solo il file di scheda nel suo formato (.json). Non può aprire direttamente un PDF, un Excel o un file Pages. Per provarla, usa la scheda di esempio.' })
+  ));
+  let s;
+  try { s = JSON.parse(await file.text()); }
+  catch (e) { return nonValido('Il file "' + (file.name || '') + '" non è una scheda per questa app.'); }
+  const err = validaScheda(s);
+  if (err) return nonValido('Il file "' + (file.name || '') + '" non è una scheda per questa app. ' + err);
+  await applicaScheda(s);
+  toast('Scheda caricata');
+  vistaHome();
+}
+
+async function caricaEsempio() {
+  await applicaScheda(JSON.parse(JSON.stringify(SCHEDA_ESEMPIO)));
+  toast('Scheda di esempio caricata');
+  vistaHome();
 }
 
 function selettoreScheda(etichetta, classe, contenitoreErrore) {
   const input = h('input', {
-    type: 'file', accept: '.json,application/json', class: 'nascosto',
+    type: 'file', class: 'nascosto',
     onchange: (ev) => { const f = ev.target.files[0]; if (f) importaScheda(f, contenitoreErrore); }
   });
   const btn = h('button', { class: 'btn ' + classe, type: 'button', onclick: () => input.click(), text: etichetta });
@@ -411,9 +449,14 @@ function vistaHome() {
 
   if (!stato.scheda) {
     pag.append(h('div', { class: 'carta' },
-      h('h2', { text: 'Per iniziare serve la scheda' }),
-      h('p', { class: 'sotto', text: 'Tocca il pulsante e scegli il file della scheda (quello che ti ho preparato, con estensione .json). Se lo hai ricevuto con AirDrop lo trovi nell\'app File, nella cartella Download.' }),
-      selettoreScheda('Carica la scheda', 'primario', errori),
+      h('h2', { text: 'Per iniziare serve una scheda' }),
+      h('p', { class: 'sotto', text: 'Se vuoi solo vedere come funziona, usa la scheda di esempio: ci metti un minuto e non serve nessun file.' }),
+      h('button', { class: 'btn primario', type: 'button', text: 'Prova con una scheda di esempio', onclick: caricaEsempio })
+    ));
+    pag.append(h('div', { class: 'carta' },
+      h('h2', { text: 'Ho già un file di scheda' }),
+      h('p', { class: 'sotto', text: 'Serve il file nel formato di questa app (.json). Se lo hai ricevuto con AirDrop lo trovi nell\'app File, nella cartella Download.' }),
+      selettoreScheda('Carica il file della scheda', '', errori),
       errori
     ));
   } else {
