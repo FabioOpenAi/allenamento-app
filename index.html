@@ -114,6 +114,9 @@ button, input, textarea { font: inherit; color: inherit; }
 .nascosto { display: none !important; }
 .nota.progressione { border-left-color: var(--evid); }
 .nota .etichetta { margin-bottom: 4px; color: var(--evid); }
+.originale { background: var(--carta); border-radius: 12px; padding: 10px 14px; font-size: 15px; color: var(--testo-2); }
+.originale summary { cursor: pointer; font-weight: 600; }
+.originale p { margin-top: 8px; font-style: italic; color: var(--testo); }
 .scala { display: flex; gap: 10px; }
 .scala-b { flex: 1; padding: 14px 0; border-radius: 14px; border: 2px solid var(--linea); background: var(--carta); font-weight: 800; font-size: 21px; cursor: pointer; }
 .scala-b.sel { background: var(--accento); color: var(--accento-testo); border-color: var(--accento); }
@@ -723,6 +726,8 @@ function creaPasso(i) {
   if (tessere.length) passo.append(h('div', { class: 'tessere' }, tessere));
   if (ds.nota) passo.append(h('div', { class: 'nota', text: ds.nota }));
   if (ds.progressione) passo.append(h('div', { class: 'nota progressione' }, h('div', { class: 'etichetta', text: 'Come progredire' }), ds.progressione));
+
+  if (es.originale) passo.append(h('details', { class: 'originale' }, h('summary', { text: 'Come è scritto nella scheda originale' }), h('p', { text: es.originale })));
 
   if (es.video) passo.append(creaBloccoVideo(i, passo));
 

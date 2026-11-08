@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controllo scheda</title>
+<meta name="theme-color" content="#101418">
+<style>
+:root {
+  --sfondo: #101418; --carta: #1a2128; --carta-2: #232c35; --testo: #f2f5f7; --testo-2: #a3afb9;
+  --linea: #2f3a45; --accento: #2dd4bf; --accento-testo: #06231f; --ok: #34c759; --avviso: #f0a050; --errore: #ff6b6b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--sfondo); color: var(--testo); }
+body { font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 60px; display: flex; flex-direction: column; gap: 16px; }
+h1 { margin: 0; font-size: 30px; letter-spacing: -.4px; }
+h2 { margin: 0; font-size: 21px; }
+p { margin: 0; }
+.sotto { color: var(--testo-2); font-size: 15px; }
+.carta { background: var(--carta); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.btn { border: 0; border-radius: 14px; padding: 13px 18px; font: inherit; font-weight: 700; background: var(--carta-2); color: var(--testo); cursor: pointer; }
+.btn.primario { background: var(--accento); color: var(--accento-testo); }
+textarea { width: 100%; min-height: 110px; background: var(--sfondo); color: var(--testo); border: 2px solid var(--linea); border-radius: 12px; padding: 10px 12px; font: 14px/1.4 ui-monospace, Menlo, monospace; }
+.fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.riepilogo { display: flex; gap: 10px; flex-wrap: wrap; }
+.pill { padding: 6px 12px; border-radius: 999px; background: var(--carta-2); font-size: 14px; font-weight: 700; }
+.pill.ok { background: #12312d; color: var(--accento); }
+.pill.avv { background: #3a2a14; color: var(--avviso); }
+.pill.err { background: #3d1c1c; color: var(--errore); }
+.msg-err { background: #3d1c1c; color: #ffc4c4; border-radius: 12px; padding: 12px 14px; }
+.scroll { overflow-x: auto; border-radius: 12px; border: 1px solid var(--linea); }
+table { border-collapse: collapse; width: 100%; min-width: 900px; font-size: 14px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; }
+th { background: var(--carta-2); font-size: 12px; letter-spacing: .6px; text-transform: uppercase; color: var(--testo-2); white-space: nowrap; }
+td.n { color: var(--testo-2); }
+td.nome { font-weight: 700; min-width: 170px; }
+td.orig { color: var(--testo-2); font-size: 13px; min-width: 220px; font-style: italic; }
+tr.attenzione td { background: rgba(240,160,80,.07); }
+tr.avvisi td { padding: 6px 12px 10px 42px; border-bottom: 2px solid var(--linea); }
+tr.attenzione:not(.avvisi) td { border-bottom: 0; }
+.seg { font-size: 14px; }
+.seg { color: var(--avviso); font-size: 13px; }
+.sett { font-size: 13px; color: var(--testo-2); }
+.nascosto { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Controllo scheda</h1>
+    <p class="sotto">Apri qui il file della scheda preparato per l'app e controlla che sia uguale a quella che hai scritto, prima di mandarla all'atleta. Il file resta sul tuo computer: la pagina non lo invia a nessun server.</p>
+  </div>
+
+  <div class="carta">
+    <div class="fila">
+      <button class="btn primario" id="scegli" type="button">Scegli il file della scheda (.json)</button>
+      <input id="file" type="file" class="nascosto">
+      <span class="sotto">oppure trascinalo su questa pagina</span>
+    </div>
+    <details>
+      <summary class="sotto" style="cursor:pointer">Oppure incolla qui il contenuto</summary>
+      <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px">
+        <textarea id="testo" placeholder="Incolla il contenuto del file della scheda"></textarea>
+        <div><button class="btn" id="usa-testo" type="button">Controlla il testo incollato</button></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="esito" class="nascosto" style="display:flex; flex-direction:column; gap:16px"></div>
+</main>
+
+<script>
+'use strict';
+function h(tag, props, ...figli) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const c of figli.flat()) { if (c == null || c === false) continue; e.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return e;
+}
+const vuoto = (v) => !v || v === '–' || v === '-';
+const esito = document.getElementById('esito');
+
+function nSettimane(s) {
+  const dalle = Math.max(1, ...s.giorni.flatMap((g) => g.esercizi.map((e) => (Array.isArray(e.settimane) ? e.settimane.length : 1))));
+  return Math.max(Number(s.settimane) || 1, dalle);
+}
+
+/* Controlli su ogni esercizio: restituisce le segnalazioni da far vedere ad Andrea */
+function controlli(es, tot, nomiVisti) {
+  const seg = [];
+  if (!vuoto(es.serie_rep) && !/\d/.test(es.serie_rep)) seg.push('Le serie × rep non hanno numeri.');
+  if (!vuoto(es.carico) && !/\d/.test(es.carico)) seg.push('Il carico non ha un numero: "' + es.carico + '". Controlla.');
+  if (!vuoto(es.rest) && !/\d/.test(es.rest) && !/basso|libero|pronto/i.test(es.rest)) seg.push('Il recupero non ha un numero: "' + es.rest + '".');
+  if (Array.isArray(es.settimane)) {
+    if (es.settimane.length !== tot) seg.push('Le settimane indicate sono ' + es.settimane.length + ' su ' + tot + '.');
+    if (es.settimane.some((w) => w == null || w === '' || (typeof w === 'object' && !Object.keys(w).length))) seg.push('Una settimana è vuota.');
+  }
+  if (es.nome && es.nome.length > 90) seg.push('Il nome è molto lungo.');
+  if (nomiVisti.has(es.nome)) seg.push('Il nome compare due volte nello stesso giorno.');
+  nomiVisti.add(es.nome);
+  if (!es.originale) seg.push('Manca il testo originale di Andrea per questo esercizio.');
+  if (es.da_controllare) seg.push(es.da_controllare);
+  return seg;
+}
+
+function descriviSettimane(es) {
+  if (!Array.isArray(es.settimane)) return '';
+  return es.settimane.map((w, i) => {
+    if (typeof w === 'string') return 'S' + (i + 1) + ': ' + w;
+    const parti = [w.serie_rep, w.carico, w.rest].filter((x) => x && !vuoto(x));
+    const extra = w.progressione ? ' (' + w.progressione + ')' : '';
+    return 'S' + (i + 1) + ': ' + (parti.join(' · ') || '—') + extra;
+  }).join('\n');
+}
+
+function mostra(testo) {
+  esito.replaceChildren();
+  let s;
+  try { s = JSON.parse(testo); }
+  catch (e) { esito.append(h('div', { class: 'msg-err', text: 'Il contenuto non è un file di scheda valido (non riesco a leggerlo come .json). ' })); esito.classList.remove('nascosto'); return; }
+
+  const errori = [];
+  if (!s || !Array.isArray(s.giorni) || !s.giorni.length) errori.push('Non trovo i giorni di allenamento.');
+  else for (const g of s.giorni) {
+    if (!g.nome) errori.push('Un giorno non ha il nome.');
+    if (!Array.isArray(g.esercizi) || !g.esercizi.length) errori.push('Il giorno "' + (g.nome || '?') + '" non ha esercizi.');
+    else for (const e of g.esercizi) if (!e.nome) errori.push('Nel giorno "' + g.nome + '" c\'è un esercizio senza nome.');
+  }
+  if (errori.length) {
+    esito.append(h('div', { class: 'msg-err' }, h('strong', { text: 'La scheda non è utilizzabile: ' }), errori.join(' ')));
+    esito.classList.remove('nascosto'); return;
+  }
+
+  const tot = nSettimane(s);
+  let nEs = 0, nSeg = 0;
+  const blocchi = s.giorni.map((g) => {
+    const visti = new Set();
+    const righe = g.esercizi.flatMap((es, i) => {
+      nEs++;
+      const seg = controlli(es, tot, visti);
+      nSeg += seg.length;
+      const riga = h('tr', { class: seg.length ? 'attenzione' : '' },
+        h('td', { class: 'n', text: String(i + 1) }),
+        h('td', { class: 'nome', text: es.nome }),
+        h('td', { text: vuoto(es.serie_rep) ? '–' : es.serie_rep }),
+        h('td', { text: vuoto(es.carico) ? '–' : es.carico }),
+        h('td', { text: vuoto(es.rest) ? '–' : es.rest }),
+        h('td', { text: [es.nota, es.progressione ? 'Progressione: ' + es.progressione : ''].filter(Boolean).join('\n'), style: 'white-space:pre-line' }),
+        h('td', { class: 'sett', text: descriviSettimane(es), style: 'white-space:pre-line' }),
+        h('td', { text: es.video ? 'Sì' : 'No' }),
+        h('td', { class: 'orig', text: es.originale || '—' })
+      );
+      if (!seg.length) return [riga];
+      const avvisi = h('tr', { class: 'attenzione avvisi' }, h('td', { colspan: '9' }, seg.map((x) => h('div', { class: 'seg', text: '⚠ ' + x }))));
+      return [riga, avvisi];
+    });
+    return h('div', { class: 'carta' },
+      h('h2', { text: g.nome + ' · ' + g.esercizi.length + ' esercizi' }),
+      h('div', { class: 'scroll' }, h('table', {},
+        h('thead', {}, h('tr', {}, ['#', 'Esercizio', 'Serie × rep', 'Carico', 'Recupero', 'Note e progressione', 'Per settimana', 'Video', 'Come l\'ha scritta Andrea'].map((t) => h('th', { text: t })))),
+        h('tbody', {}, righe)
+      ))
+    );
+  });
+
+  esito.append(
+    h('div', { class: 'carta' },
+      h('h2', { text: (s.atleta || 'Atleta') + ' · ' + (s.periodo || '') }),
+      h('div', { class: 'riepilogo' },
+        h('span', { class: 'pill', text: s.giorni.length + ' giorni' }),
+        h('span', { class: 'pill', text: nEs + ' esercizi' }),
+        h('span', { class: 'pill', text: tot > 1 ? tot + ' settimane' : 'nessuna progressione per settimana' }),
+        h('span', { class: 'pill', text: 'Allenatore: ' + (s.allenatore || 'non indicato') }),
+        nSeg ? h('span', { class: 'pill avv', text: nSeg + ' punti da controllare' }) : h('span', { class: 'pill ok', text: 'Nessun punto da controllare' })
+      ),
+      h('p', { class: 'sotto', text: 'Confronta ogni riga con la scheda originale: nome, serie × rep, carico, recupero, note. I punti in arancione sono quelli che il programma non ha saputo interpretare con certezza.' })
+    ),
+    ...blocchi
+  );
+  esito.classList.remove('nascosto');
+}
+
+const input = document.getElementById('file');
+document.getElementById('scegli').addEventListener('click', () => input.click());
+input.addEventListener('change', async () => { const f = input.files[0]; if (f) mostra(await f.text()); });
+document.getElementById('usa-testo').addEventListener('click', () => mostra(document.getElementById('testo').value));
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', async (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) mostra(await f.text()); });
+</script>
+</body>
+</html>
