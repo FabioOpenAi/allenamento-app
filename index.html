@@ -112,6 +112,20 @@ button, input, textarea { font: inherit; color: inherit; }
 .sovra .msg { color: #cfd8df; font-size: 16px; text-align: center; }
 .rec-btn { background: #e5484d; color: #fff; }
 .nascosto { display: none !important; }
+.nota.progressione { border-left-color: var(--evid); }
+.nota .etichetta { margin-bottom: 4px; color: var(--evid); }
+.scala { display: flex; gap: 10px; }
+.scala-b { flex: 1; padding: 14px 0; border-radius: 14px; border: 2px solid var(--linea); background: var(--carta); font-weight: 800; font-size: 21px; cursor: pointer; }
+.scala-b.sel { background: var(--accento); color: var(--accento-testo); border-color: var(--accento); }
+.scala-leg { font-size: 13px; color: var(--testo-2); }
+.stepper { display: flex; align-items: center; gap: 12px; }
+.stepper .btn { width: 64px; flex: none; font-size: 26px; padding: 8px 0; }
+.stepper-v { flex: 1; text-align: center; font-size: 24px; font-weight: 800; }
+.tabella-wrap { overflow: auto; border-radius: 14px; background: var(--carta); max-height: 56dvh; }
+.tabella-wrap table { border-collapse: collapse; font-size: 14px; min-width: 700px; width: 100%; }
+.tabella-wrap th, .tabella-wrap td { padding: 8px 10px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; }
+.tabella-wrap td:nth-child(-n+3) { white-space: nowrap; }
+.tabella-wrap th { position: sticky; top: 0; background: var(--carta-2); font-size: 12px; letter-spacing: .6px; text-transform: uppercase; }
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--basso) + 24px); z-index: 99; background: #f2f5f7; color: #101418; border-radius: 14px; padding: 14px 16px; font-weight: 600; text-align: center; box-shadow: 0 6px 24px #0008; }
 </style>
 </head>
@@ -147,6 +161,22 @@ const coachDi = () => coachNome() ? 'di ' + coachNome() : "dell'allenatore";
 const coachA = () => coachNome() ? 'a ' + coachNome() : "all'allenatore";
 const coachPer = () => coachNome() ? 'per ' + coachNome() : "per l'allenatore";
 const coachCon = () => coachNome() ? 'con ' + coachNome() : "con l'allenatore";
+/* Settimane del programma: l'esercizio può cambiare serie, carico, note e progressione di settimana in settimana */
+const haSettimane = () => !!(stato.scheda && (Number(stato.scheda.settimane) > 1 ||
+  stato.scheda.giorni.some((g) => g.esercizi.some((e) => Array.isArray(e.settimane) && e.settimane.length > 1))));
+const nSettimane = () => {
+  const s = stato.scheda;
+  const dalle = Math.max(1, ...s.giorni.flatMap((g) => g.esercizi.map((e) => (Array.isArray(e.settimane) ? e.settimane.length : 1))));
+  return Math.max(Number(s.settimane) || 1, dalle);
+};
+const settSess = () => (stato.sess && stato.sess.settimana) || 1;
+function datiEsercizio(es, sett) {
+  const base = { serie_rep: es.serie_rep, carico: es.carico, rest: es.rest, nota: es.nota, progressione: es.progressione };
+  const w = Array.isArray(es.settimane) ? es.settimane[sett - 1] : null;
+  if (w == null) return base;
+  if (typeof w === 'string') return { ...base, serie_rep: w };
+  return { ...base, ...w };
+}
 const vuoto = (v) => !v || v === '–' || v === '-';
 
 function toast(testo, ms = 3200) {
@@ -206,7 +236,9 @@ const stato = {
   storico: [],
   ultimoGiorno: null,
   corrente: 0,
-  schermoAcceso: null
+  schermoAcceso: null,
+  settimana: 1,          // settimana del programma in cui si trova l'atleta
+  cicloFinito: false     // la scheda è stata completata
 };
 
 let timerSalva = null;
@@ -220,6 +252,9 @@ async function caricaTutto() {
   stato.scheda = (await DB.get('kv', 'scheda')) || null;
   stato.sess = (await DB.get('kv', 'sessione')) || null;
   stato.storico = (await DB.get('kv', 'storico')) || [];
+  stato.settimana = Number(await DB.get('kv', 'settimana')) || 1;
+  stato.cicloFinito = !!(await DB.get('kv', 'cicloFinito'));
+  if (stato.scheda && stato.settimana > nSettimane()) stato.settimana = nSettimane();
   const ug = await DB.get('kv', 'ultimoGiorno');
   stato.ultimoGiorno = ug === undefined ? null : ug;
   if (stato.sess && stato.scheda) await caricaVideoSessione();
@@ -241,13 +276,18 @@ async function caricaVideoSessione() {
 const SCHEDA_ESEMPIO = {
   atleta: 'Prova',
   periodo: 'Scheda di esempio',
+  settimane: 4,
   obiettivi: 'Scheda di prova per capire come funziona l\'app: scorri gli esercizi, registra un video e prepara il resoconto.',
   prima_di_iniziare: 'Questa è una scheda di esempio, non un programma di allenamento vero.',
   giorni: [
     { nome: 'Giorno 1', esercizi: [
       { nome: 'Riscaldamento a terra', serie_rep: '–', carico: '–', rest: '–', nota: 'Esercizio senza video: tocca "Fatto" e vai avanti.', video: false },
-      { nome: 'Squat a corpo libero', serie_rep: '3 × 10-12', carico: '–', rest: '1\'', nota: 'Prova a filmare l\'ultima serie con il pulsante verde acqua.', video: true },
-      { nome: 'Panca con manubri', serie_rep: '3 × 8-10', carico: '12 kg', rest: '1\'30"', nota: 'Scrivi qui sotto quanti kg e ripetizioni hai fatto davvero.', video: true },
+      { nome: 'Squat a corpo libero', serie_rep: '3 × 10-12', carico: '–', rest: '1\'', nota: 'Prova a filmare l\'ultima serie con il pulsante verde acqua.', video: true,
+        progressione: 'Quando chiudi tutte le serie al massimo delle ripetizioni, la settimana dopo si aggiunge una serie.',
+        settimane: ['3 × 10', '3 × 12', '4 × 10', '4 × 12'] },
+      { nome: 'Panca con manubri', serie_rep: '3 × 8-10', carico: '12 kg', rest: '1\'30"', nota: 'Scrivi qui sotto quanti kg e ripetizioni hai fatto davvero.', video: true,
+        settimane: [ { serie_rep: '3 × 8', carico: '12 kg' }, { serie_rep: '3 × 10', carico: '12 kg' },
+          { serie_rep: '3 × 8', carico: '14 kg', progressione: 'Carico più alto: se perdi la tecnica, fermati e scrivilo nelle note.' }, { serie_rep: '3 × 10', carico: '14 kg' } ] },
       { nome: 'Rematore con elastico', serie_rep: '2 × 12', carico: '–', rest: '–', nota: '', video: true },
       { nome: 'Plank', serie_rep: '3 × 30"', carico: '–', rest: '40"', nota: 'Alla fine dell\'ultimo esercizio trovi il resoconto da inviare.', video: true }
     ] },
@@ -260,7 +300,8 @@ const SCHEDA_ESEMPIO = {
   ],
   info_utili: [
     { titolo: 'Video', testo: 'Filma l\'ultima serie di ogni esercizio. Il video parte dopo 5 secondi: appoggia il telefono e premi Ferma quando hai finito.' },
-    { titolo: 'Resoconto', testo: 'Segna i kg e le ripetizioni fatte: a fine allenamento l\'app prepara il riepilogo da mandare all\'allenatore.' }
+    { titolo: 'Settimane', testo: 'Il programma dura più settimane e alcuni esercizi cambiano: l\'app mostra quelli della settimana in cui sei. Passa alla successiva da sola quando chiudi l\'ultimo giorno.' },
+    { titolo: 'Resoconto', testo: 'Segna i kg, le ripetizioni e il livello di fatica da 1 a 4: a fine allenamento l\'app prepara il riepilogo, e a fine scheda una tabella con tutti gli allenamenti.' }
   ]
 };
 
@@ -283,6 +324,8 @@ async function applicaScheda(s) {
   if (stato.sess) await eliminaSessione();
   stato.ultimoGiorno = null;
   await DB.set('kv', 'ultimoGiorno', null);
+  stato.settimana = 1; stato.cicloFinito = false;
+  await DB.set('kv', 'settimana', 1); await DB.set('kv', 'cicloFinito', false);
 }
 
 async function importaScheda(file, contenitoreErrore) {
@@ -324,7 +367,9 @@ function nuovaSessione(giorno) {
     id: Date.now().toString(36),
     giorno,
     inizio: new Date().toISOString(),
-    es: g.esercizi.map(() => ({ fatto: false, kg: '', rep: '', note: '' })),
+    settimana: stato.settimana,
+    es: g.esercizi.map(() => ({ fatto: false, kg: '', rep: '', note: '', fatica: 0 })),
+    faticaGenerale: 0,
     finale: ''
   };
   stato.video.clear();
@@ -353,20 +398,22 @@ function dataLunga(iso) {
 function testoResoconto() {
   const g = stato.scheda.giorni[stato.sess.giorno];
   const righe = [];
-  righe.push(`Resoconto ${g.nome} — ${dataLunga(stato.sess.inizio)}`);
+  righe.push(`Resoconto ${g.nome}${haSettimane() ? ' · Settimana ' + settSess() : ''} — ${dataLunga(stato.sess.inizio)}`);
   righe.push(stato.scheda.atleta || '');
   righe.push('');
   g.esercizi.forEach((es, i) => {
     const d = stato.sess.es[i];
-    const ha = d.kg || d.rep || d.note;
+    const ha = d.kg || d.rep || d.note || d.fatica;
     if (!d.fatto && !ha) { righe.push(`✗ ${es.nome} — non fatto`); return; }
     const parti = [];
     if (d.kg) parti.push('kg: ' + d.kg);
     if (d.rep) parti.push('rip: ' + d.rep);
+    if (d.fatica) parti.push('fatica: ' + d.fatica + '/4');
     if (d.note) parti.push('note: ' + d.note);
     if (stato.video.has(i)) parti.push('video 🎥');
     righe.push(`✓ ${es.nome}${parti.length ? ' — ' + parti.join(' · ') : ''}`);
   });
+  if (stato.sess.faticaGenerale) { righe.push(''); righe.push('Fatica generale dell\'allenamento: ' + stato.sess.faticaGenerale + '/4'); }
   if (stato.sess.finale.trim()) { righe.push(''); righe.push(coachPer().replace(/^p/, 'P') + ': ' + stato.sess.finale.trim()); }
   return righe.join('\n');
 }
@@ -489,6 +536,35 @@ function vistaHome() {
       ));
     }
 
+    if (stato.cicloFinito) {
+      pag.append(h('div', { class: 'carta' },
+        h('span', { class: 'etichetta', text: 'Scheda completata' }),
+        h('h2', { text: 'Hai finito il programma' }),
+        h('p', { class: 'sotto', text: 'Apri la tabella con tutti i tuoi allenamenti e mandala ' + coachA() + '.' }),
+        h('button', { class: 'btn primario', type: 'button', text: 'Apri la tabella di riepilogo', onclick: vistaTabella }),
+        h('button', { class: 'btn testo piccolo', type: 'button', text: 'Ricomincia dalla settimana 1', onclick: async () => {
+          stato.cicloFinito = false; stato.settimana = 1;
+          await DB.set('kv', 'cicloFinito', false).catch(() => {}); await DB.set('kv', 'settimana', 1).catch(() => {});
+          vistaHome();
+        } })
+      ));
+    } else if (haSettimane() && !stato.sess) {
+      const cambia = async (d) => {
+        stato.settimana = Math.min(nSettimane(), Math.max(1, stato.settimana + d));
+        await DB.set('kv', 'settimana', stato.settimana).catch(() => {});
+        vistaHome();
+      };
+      pag.append(h('div', { class: 'carta' },
+        h('span', { class: 'etichetta', text: 'Settimana del programma' }),
+        h('div', { class: 'stepper' },
+          h('button', { class: 'btn', type: 'button', text: '−', onclick: () => cambia(-1) }),
+          h('div', { class: 'stepper-v', text: `${stato.settimana} di ${nSettimane()}` }),
+          h('button', { class: 'btn', type: 'button', text: '+', onclick: () => cambia(1) })
+        ),
+        h('p', { class: 'sotto', text: 'Passa alla successiva da sola quando chiudi l\'ultimo giorno. Se serve, correggila qui.' })
+      ));
+    }
+
     if (s.obiettivi) pag.append(h('div', { class: 'infobox' }, h('h3', { text: 'Obiettivi' }), h('p', { text: s.obiettivi })));
 
     pag.append(h('button', { class: 'btn', type: 'button', text: 'Info utili ' + coachDi(), onclick: vistaInfo }));
@@ -524,15 +600,54 @@ function vistaStorico() {
   stato.vista = 'storico';
   const pag = h('div', { class: 'pagina' });
   if (!stato.storico.length) pag.append(h('p', { class: 'sotto', text: 'Non hai ancora chiuso nessun allenamento.' }));
+  else pag.append(h('button', { class: 'btn primario', type: 'button', text: 'Tabella di riepilogo di tutti gli allenamenti', onclick: vistaTabella }));
   stato.storico.forEach((r) => {
     pag.append(h('div', { class: 'carta' },
       h('span', { class: 'etichetta', text: dataLunga(r.data) }),
-      h('h2', { text: r.giorno }),
+      h('h2', { text: r.giorno + (r.settimana ? ' · Settimana ' + r.settimana : '') }),
       h('div', { class: 'riepilogo', text: r.testo }),
       h('button', { class: 'btn piccolo', type: 'button', text: 'Copia questo resoconto', onclick: () => copiaTesto(r.testo) })
     ));
   });
   app.replaceChildren(barraSemplice('Allenamenti passati'), pag);
+}
+
+/* Tabella di riepilogo: tutti gli allenamenti chiusi, una riga per esercizio */
+const INTESTAZIONE_TABELLA = ['Data', 'Settimana', 'Giorno', 'Esercizio', 'Previsto', 'Kg fatti', 'Ripetizioni', 'Fatica (1-4)', 'Note'];
+function righeTabella() {
+  const out = [];
+  [...stato.storico].reverse().forEach((r) => {
+    const data = new Date(r.data).toLocaleDateString('it-IT');
+    (r.righe || []).forEach((x) => out.push([data, r.settimana || '', r.giorno, x.esercizio, x.previsto || '', x.kg || '', x.rep || '', x.fatica || '', x.note || '']));
+    if (r.faticaGenerale || (r.finale || '').trim()) out.push([data, r.settimana || '', r.giorno, 'Allenamento nel complesso', '', '', '', r.faticaGenerale || '', (r.finale || '').trim()]);
+  });
+  return out;
+}
+const csvCella = (v) => { const t = String(v ?? ''); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+function testoCsv() { return '\ufeff' + [INTESTAZIONE_TABELLA, ...righeTabella()].map((r) => r.map(csvCella).join(';')).join('\r\n'); }
+function testoTsv() { return [INTESTAZIONE_TABELLA, ...righeTabella()].map((r) => r.map((c) => String(c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n'); }
+
+function vistaTabella() {
+  stato.vista = 'tabella';
+  const righe = righeTabella();
+  const pag = h('div', { class: 'pagina' });
+  if (!righe.length) {
+    pag.append(h('p', { class: 'sotto', text: 'La tabella si riempie man mano che chiudi gli allenamenti.' }));
+  } else {
+    pag.append(h('p', { class: 'sotto', text: `${stato.storico.length} allenamenti, ${righe.length} righe. Scorri a destra per vedere tutte le colonne.` }));
+    pag.append(h('div', { class: 'tabella-wrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, INTESTAZIONE_TABELLA.map((t) => h('th', { text: t })))),
+      h('tbody', {}, righe.map((r) => h('tr', {}, r.map((c) => h('td', { text: String(c) })))))
+    )));
+    pag.append(h('button', { class: 'btn primario', type: 'button', text: 'Invia il file ' + coachA(), onclick: async () => {
+      const nome = `riepilogo-scheda_${slug(stato.scheda.atleta || 'atleta')}_${new Date().toISOString().slice(0, 10)}.csv`;
+      await condividi({ files: [new File([testoCsv()], nome, { type: 'text/csv' })], text: 'Riepilogo della scheda', title: 'Riepilogo della scheda' });
+    } }));
+    pag.append(h('button', { class: 'btn', type: 'button', text: 'Copia la tabella (da incollare in Fogli o Excel)', onclick: async () => {
+      try { await navigator.clipboard.writeText(testoTsv()); toast('Tabella copiata'); } catch (e) { toast('Non sono riuscito a copiare.'); }
+    } }));
+  }
+  app.replaceChildren(barraSemplice('Riepilogo scheda'), pag);
 }
 
 /* =========================================================
@@ -554,7 +669,7 @@ function vistaAllenamento() {
   app.replaceChildren(
     h('div', { class: 'barra' },
       h('button', { class: 'indietro', type: 'button', text: '‹ Esci', onclick: vistaHome }),
-      h('div', { class: 'titolo', text: g.nome }),
+      h('div', { class: 'titolo', text: g.nome + (haSettimane() ? ' · Sett. ' + settSess() : '') }),
       contatore
     ),
     h('div', { class: 'progresso' }, barraProg),
@@ -597,19 +712,22 @@ function creaPasso(i) {
   const d = stato.sess.es[i];
   const passo = h('section', { class: 'passo', 'data-i': i });
 
+  const ds = datiEsercizio(es, settSess());
   passo.append(h('h2', { text: es.nome }));
+  if (haSettimane()) passo.append(h('span', { class: 'badge video', text: 'SETTIMANA ' + settSess() + ' DI ' + nSettimane() }));
 
   const tessere = [];
-  if (!vuoto(es.serie_rep)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'SERIE × REP' }), h('div', { class: 'v', text: es.serie_rep })));
-  if (!vuoto(es.carico)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'CARICO' }), h('div', { class: 'v', text: es.carico })));
-  if (!vuoto(es.rest)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'RECUPERO' }), h('div', { class: 'v', text: es.rest })));
+  if (!vuoto(ds.serie_rep)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'SERIE × REP' }), h('div', { class: 'v', text: ds.serie_rep })));
+  if (!vuoto(ds.carico)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'CARICO' }), h('div', { class: 'v', text: ds.carico })));
+  if (!vuoto(ds.rest)) tessere.push(h('div', { class: 'tessera' }, h('div', { class: 'e', text: 'RECUPERO' }), h('div', { class: 'v', text: ds.rest })));
   if (tessere.length) passo.append(h('div', { class: 'tessere' }, tessere));
-  if (es.nota) passo.append(h('div', { class: 'nota', text: es.nota }));
+  if (ds.nota) passo.append(h('div', { class: 'nota', text: ds.nota }));
+  if (ds.progressione) passo.append(h('div', { class: 'nota progressione' }, h('div', { class: 'etichetta', text: 'Come progredire' }), ds.progressione));
 
   if (es.video) passo.append(creaBloccoVideo(i, passo));
 
   // Dati da riportare nel resoconto: solo dove ha senso
-  if (es.video || !vuoto(es.carico) || !vuoto(es.serie_rep)) {
+  if (es.video || !vuoto(ds.carico) || !vuoto(ds.serie_rep)) {
     passo.append(h('div', { class: 'campi' },
       h('div', { class: 'campo' },
         h('label', { text: 'Kg fatti' }),
@@ -620,6 +738,7 @@ function creaPasso(i) {
         h('input', { type: 'text', placeholder: 'es. 8, 8, 7', value: d.rep, oninput: (e) => { d.rep = e.target.value; salvaSess(); } })
       )
     ));
+    passo.append(creaFatica(d.fatica || 0, (v) => { d.fatica = v; salvaSess(); }, 'Fatica'));
     passo.append(h('div', { class: 'campo' },
       h('label', { text: 'Note o fastidi (facoltativo)' }),
       h('input', { type: 'text', placeholder: 'es. fastidio alla spalla', value: d.note, oninput: (e) => { d.note = e.target.value; salvaSess(); } })
@@ -640,6 +759,18 @@ function creaPasso(i) {
   disegna();
   passo.append(pulsanteFatto, salta);
   return passo;
+}
+
+function creaFatica(valore, alCambio, etichetta) {
+  const riga = h('div', { class: 'scala' });
+  const disegna = () => {
+    riga.replaceChildren(...[1, 2, 3, 4].map((n) => h('button', {
+      type: 'button', class: 'scala-b' + (valore === n ? ' sel' : ''), text: String(n),
+      onclick: () => { valore = valore === n ? 0 : n; alCambio(valore); disegna(); }
+    })));
+  };
+  disegna();
+  return h('div', { class: 'campo' }, h('label', { text: etichetta }), riga, h('div', { class: 'scala-leg', text: '1 = leggera · 4 = al limite' }));
 }
 
 function creaBloccoVideo(i, passo) {
@@ -697,6 +828,7 @@ function creaFine() {
   passo.append(
     h('h2', { text: 'Allenamento finito' }),
     info,
+    creaFatica(stato.sess.faticaGenerale || 0, (v) => { stato.sess.faticaGenerale = v; salvaSess(); riepilogo.textContent = testoResoconto(); }, 'Come ti sei sentito oggi?'),
     finale,
     h('div', { class: 'etichetta', text: 'Anteprima del resoconto' }),
     riepilogo,
@@ -727,13 +859,26 @@ async function chiudiAllenamento() {
     ? `Chiudo l'allenamento? I ${nv} video registrati vengono cancellati dal telefono. Assicurati di averli inviati ${coachA()}.`
     : 'Chiudo l\'allenamento?';
   if (!confirm(msg)) return;
-  stato.storico.unshift({ id: stato.sess.id, giorno: g.nome, data: stato.sess.inizio, testo: testoResoconto() });
-  stato.storico = stato.storico.slice(0, 60);
+  const righeTab = g.esercizi.map((es, i) => {
+    const d = stato.sess.es[i];
+    const ds = datiEsercizio(es, settSess());
+    return { esercizio: es.nome, previsto: [ds.serie_rep, ds.carico].filter((x) => !vuoto(x)).join(' · '),
+      kg: d.kg || '', rep: d.rep || '', fatica: d.fatica || 0, note: d.note || '', fatto: !!d.fatto, video: stato.video.has(i) };
+  }).filter((r) => r.fatto || r.kg || r.rep || r.fatica || r.note);
+  stato.storico.unshift({ id: stato.sess.id, giorno: g.nome, settimana: haSettimane() ? settSess() : 0, data: stato.sess.inizio,
+    testo: testoResoconto(), righe: righeTab, faticaGenerale: stato.sess.faticaGenerale || 0, finale: stato.sess.finale || '' });
+  stato.storico = stato.storico.slice(0, 200);
   stato.ultimoGiorno = stato.sess.giorno;
+  // finito l'ultimo giorno della settimana: si passa alla settimana dopo (o la scheda è completata)
+  let messaggio = 'Allenamento chiuso. Bel lavoro!';
+  if (haSettimane() && stato.sess.giorno === stato.scheda.giorni.length - 1) {
+    if (settSess() >= nSettimane()) { stato.cicloFinito = true; await DB.set('kv', 'cicloFinito', true).catch(() => {}); messaggio = 'Scheda completata! Apri il riepilogo e mandalo ' + coachA() + '.'; }
+    else { stato.settimana = settSess() + 1; await DB.set('kv', 'settimana', stato.settimana).catch(() => {}); messaggio = 'Allenamento chiuso. Ora sei alla settimana ' + stato.settimana + '.'; }
+  }
   await DB.set('kv', 'storico', stato.storico).catch(() => {});
   await DB.set('kv', 'ultimoGiorno', stato.ultimoGiorno).catch(() => {});
   await eliminaSessione();
-  toast('Allenamento chiuso. Bel lavoro!');
+  toast(messaggio, 4500);
   vistaHome();
 }
 
