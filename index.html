@@ -121,6 +121,8 @@ button, input, textarea { font: inherit; color: inherit; }
 .scala-b { flex: 1; padding: 14px 0; border-radius: 14px; border: 2px solid var(--linea); background: var(--carta); font-weight: 800; font-size: 21px; cursor: pointer; }
 .scala-b.sel { background: var(--accento); color: var(--accento-testo); border-color: var(--accento); }
 .scala-leg { font-size: 13px; color: var(--testo-2); }
+.sett-scelta { display: flex; flex-wrap: wrap; gap: 8px; }
+.sett-scelta .btn { width: auto; flex: 1 0 56px; padding: 14px 0; font-size: 20px; }
 .stepper { display: flex; align-items: center; gap: 12px; }
 .stepper .btn { width: 64px; flex: none; font-size: 26px; padding: 8px 0; }
 .stepper-v { flex: 1; text-align: center; font-size: 24px; font-weight: 800; }
@@ -509,7 +511,7 @@ function vistaHome() {
     ));
     pag.append(h('div', { class: 'carta' },
       h('h2', { text: 'Ho già un file di scheda' }),
-      h('p', { class: 'sotto', text: 'Serve il file nel formato di questa app (.json). Se lo hai ricevuto con AirDrop lo trovi nell\'app File, nella cartella Download.' }),
+      h('p', { class: 'sotto', text: 'Serve il file nel formato di questa app (.json). Dopo averlo scaricato lo trovi tra i file del telefono: su iPhone nell\'app File, cartella Download; su Android nella cartella Download.' }),
       selettoreScheda('Carica il file della scheda', '', errori),
       errori
     ));
@@ -528,6 +530,29 @@ function vistaHome() {
         } })
       ));
     } else {
+      /* Scelta della settimana del programma: in cima, prima del giorno, così chi parte a metà scheda la vede subito */
+      if (haSettimane() && !stato.cicloFinito) {
+        const primaVolta = stato.ultimoGiorno == null && stato.storico.length === 0;
+        const scegli = async (n) => {
+          stato.settimana = n;
+          await DB.set('kv', 'settimana', n).catch(() => {});
+          vistaHome();
+        };
+        const numeri = Array.from({ length: nSettimane() }, (_, i) => i + 1);
+        pag.append(h('div', { class: 'carta' },
+          h('span', { class: 'etichetta', text: 'Settimana del programma' }),
+          h('h2', { text: primaVolta ? 'Da quale settimana parti?' : `Sei alla settimana ${stato.settimana} di ${nSettimane()}` }),
+          h('div', { class: 'sett-scelta' },
+            numeri.map((n) => h('button', {
+              class: 'btn' + (n === stato.settimana ? ' primario' : ''), type: 'button', text: String(n),
+              'aria-pressed': n === stato.settimana ? 'true' : 'false', onclick: () => scegli(n)
+            }))
+          ),
+          h('p', { class: 'sotto', text: primaVolta
+            ? 'Tocca il numero della settimana in cui sei: se hai appena ricevuto la scheda, di solito è la 1.'
+            : 'Passa alla successiva da sola quando chiudi l\'ultimo giorno. Se serve, cambiala qui.' })
+        ));
+      }
       const p = giornoProposto();
       const altri = s.giorni.map((g, i) => i).filter((i) => i !== p);
       pag.append(h('div', { class: 'carta' },
@@ -550,21 +575,6 @@ function vistaHome() {
           await DB.set('kv', 'cicloFinito', false).catch(() => {}); await DB.set('kv', 'settimana', 1).catch(() => {});
           vistaHome();
         } })
-      ));
-    } else if (haSettimane() && !stato.sess) {
-      const cambia = async (d) => {
-        stato.settimana = Math.min(nSettimane(), Math.max(1, stato.settimana + d));
-        await DB.set('kv', 'settimana', stato.settimana).catch(() => {});
-        vistaHome();
-      };
-      pag.append(h('div', { class: 'carta' },
-        h('span', { class: 'etichetta', text: 'Settimana del programma' }),
-        h('div', { class: 'stepper' },
-          h('button', { class: 'btn', type: 'button', text: '−', onclick: () => cambia(-1) }),
-          h('div', { class: 'stepper-v', text: `${stato.settimana} di ${nSettimane()}` }),
-          h('button', { class: 'btn', type: 'button', text: '+', onclick: () => cambia(1) })
-        ),
-        h('p', { class: 'sotto', text: 'Passa alla successiva da sola quando chiudi l\'ultimo giorno. Se serve, correggila qui.' })
       ));
     }
 
