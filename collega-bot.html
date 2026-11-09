@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Collega il tuo bot Telegram all'app</title>
+<style>
+  :root {
+    --sfondo: #101418; --carta: #1a2128; --carta-2: #232c35; --testo: #f2f5f7; --testo-2: #a3afb9;
+    --linea: #2f3a45; --accento: #2dd4bf; --accento-testo: #06231f; --errore: #ff6b6b; --evid: #f0a050;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--sfondo); color: var(--testo); font: 17px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 28px; margin: 0; }
+  h2 { font-size: 21px; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .sotto { color: var(--testo-2); }
+  .carta { background: var(--carta); border-radius: 18px; padding: 18px 20px; }
+  .num { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--accento); color: var(--accento-testo); font-weight: 800; align-items: center; justify-content: center; margin-right: 10px; }
+  ol, ul { padding-left: 22px; margin: 8px 0; }
+  li { margin: 5px 0; }
+  code, .cod { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--carta-2); border-radius: 6px; padding: 1px 6px; font-size: 15px; }
+  label { display: block; font-weight: 700; margin: 12px 0 4px; }
+  input[type=text], input[type=password], input[type=number], textarea {
+    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--linea); background: var(--sfondo); color: var(--testo); font: inherit;
+  }
+  textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+  button { border: 0; border-radius: 12px; padding: 12px 18px; font: inherit; font-weight: 700; cursor: pointer; background: var(--carta-2); color: var(--testo); margin: 8px 8px 0 0; }
+  button.primario { background: var(--accento); color: var(--accento-testo); }
+  button[disabled] { opacity: .5; cursor: default; }
+  .avviso { background: #3a2a14; color: #ffd9a8; border-radius: 14px; padding: 12px 16px; }
+  .errore { background: #3d1c1c; color: #ffc4c4; border-radius: 14px; padding: 12px 16px; margin-top: 10px; }
+  .ok { background: #12312d; color: #9af0e3; border-radius: 14px; padding: 12px 16px; margin-top: 10px; }
+  .chat { display: block; width: 100%; text-align: left; background: var(--carta-2); margin: 8px 0 0; font-weight: 600; }
+  .chat.scelta { outline: 2px solid var(--accento); }
+  .chat small { display: block; color: var(--testo-2); font-weight: 400; }
+  .nascosto { display: none; }
+  @media (max-width: 520px) { body { font-size: 16px; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Collega il tuo bot Telegram all'app</h1>
+    <p class="sotto">Serve a far arrivare a te video e resoconto con un solo tocco, senza che l'atleta debba cercare Telegram e il tuo contatto. Segui i passi in ordine: dura circa dieci minuti, una volta sola.</p>
+  </div>
+
+  <div class="avviso"><strong>Prima di cominciare.</strong> Il codice che crei qui contiene la «chiave» del tuo bot: chi lo ha può scrivere nella tua chat. Usa un bot creato solo per questo scopo, manda il codice solo all'atleta interessato e non pubblicarlo. Se un codice finisce in mani sbagliate, si disattiva il bot (vedi l'ultimo riquadro) e si rifanno i codici. Questa pagina lavora solo nel tuo computer: parla soltanto con Telegram e non salva nulla.</div>
+
+  <section class="carta">
+    <h2><span class="num">1</span>Crea il bot</h2>
+    <ol>
+      <li>Apri Telegram e cerca <strong>@BotFather</strong> (ha il segno di spunta blu).</li>
+      <li>Scrivigli <code>/newbot</code>.</li>
+      <li>Ti chiede un nome (per esempio «AC Coaching Allenamenti») e poi un nome utente, che deve finire con <code>bot</code> (per esempio <code>ac_coaching_bot</code>).</li>
+      <li>Alla fine ti dà un lungo codice, il <strong>token</strong>, fatto così: <code>123456789:AA…</code>. Copialo e tienilo per te.</li>
+    </ol>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">2</span>Scegli dove ricevere i video</h2>
+    <p><strong>Più semplice, per la prova:</strong> la chat privata con il bot. Apri il tuo bot (il link te lo dà BotFather) e premi <strong>Start</strong>. Poi scrivigli una parola qualsiasi, per esempio «ciao».</p>
+    <p><strong>Più ordinata, con tanti atleti:</strong> un gruppo con un argomento per atleta.</p>
+    <ul>
+      <li>Crea un gruppo su Telegram e aggiungi il tuo bot come <strong>amministratore</strong>.</li>
+      <li>Nelle impostazioni del gruppo attiva gli <strong>Argomenti</strong> (in inglese <em>Topics</em>: il nome può variare con la versione).</li>
+      <li>Crea un argomento per ogni atleta e scrivi dentro ciascuno un messaggio con il nome dell'atleta, così lo riconosci nel passo 4.</li>
+    </ul>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">3</span>Incolla il token e controlla il bot</h2>
+    <label for="token">Token del bot</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AA…">
+    <button id="bControlla" class="primario" type="button">Controlla il bot</button>
+    <div id="esitoBot"></div>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">4</span>Scegli la chat (o l'argomento)</h2>
+    <p class="sotto">Dopo aver scritto un messaggio al bot, o dentro gli argomenti del gruppo, premi il pulsante: l'app trova da sola dove hai scritto.</p>
+    <button id="bCerca" type="button" disabled>Cerca le chat</button>
+    <div id="elencoChat"></div>
+    <p class="sotto" style="margin-top:14px">Se preferisci, puoi inserire a mano i numeri (di solito non serve):</p>
+    <label for="chat">Numero della chat</label>
+    <input id="chat" type="text" inputmode="numeric" placeholder="per esempio 123456789 oppure -1001234567890">
+    <label for="argomento">Numero dell'argomento (solo se usi un gruppo con argomenti)</label>
+    <input id="argomento" type="number" placeholder="lascia vuoto se non ne usi">
+    <button id="bProva" type="button" disabled>Manda un messaggio di prova</button>
+    <div id="esitoProva"></div>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">5</span>Crea il codice per un atleta</h2>
+    <p class="sotto">Un codice per ogni atleta (se usi gli argomenti, ripeti i passi 4 e 5 scegliendo l'argomento di ciascuno).</p>
+    <label for="nomeAtleta">Nome dell'atleta (serve solo per scrivergli il messaggio)</label>
+    <input id="nomeAtleta" type="text" placeholder="per esempio Marco">
+    <button id="bCrea" class="primario" type="button" disabled>Crea il codice</button>
+    <div id="risultato" class="nascosto">
+      <label for="codice">Codice di collegamento</label>
+      <textarea id="codice" readonly></textarea>
+      <label for="messaggio">Messaggio da mandare all'atleta (in privato)</label>
+      <textarea id="messaggio" readonly></textarea>
+      <button id="bCopiaMsg" class="primario" type="button">Copia il messaggio</button>
+      <button id="bCopiaCod" type="button">Copia solo il codice</button>
+      <div id="esitoCopia"></div>
+    </div>
+  </section>
+
+  <section class="carta">
+    <h2>Se qualcosa va storto</h2>
+    <ul>
+      <li><strong>Non trova nessuna chat:</strong> scrivi di nuovo un messaggio al bot (o nell'argomento) e ripremi «Cerca le chat». Se il bot è in un gruppo, deve essere amministratore.</li>
+      <li><strong>Un codice è finito a chi non deve averlo:</strong> su Telegram apri @BotFather, scrivi <code>/revoke</code> e scegli il bot. Ti dà un token nuovo e tutti i vecchi codici smettono di funzionare. Rifai poi i passi 3-5 e manda i codici nuovi.</li>
+      <li><strong>Un atleta cambia telefono:</strong> gli rimandi lo stesso codice, da incollare nell'app.</li>
+      <li><strong>Il video arriva come file e non come video:</strong> succede con alcuni telefoni Android, che registrano in un formato che Telegram non riconosce come video. Il file si apre comunque. Dimmelo e lo sistemiamo.</li>
+      <li><strong>Privacy:</strong> video e resoconti passano da Telegram e arrivano a te: vanno indicati nell'informativa agli atleti (è nelle bozze privacy) e conservati solo per il tempo che hai scritto.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let token = '';
+let scelta = null;   // { chat, th }
+
+function messaggio(el, classe, testo) { el.replaceChildren(); const d = document.createElement('div'); d.className = classe; d.textContent = testo; el.append(d); }
+
+async function api(metodo, campi) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(campi || {})) if (v != null && v !== '') fd.append(k, v);
+  let r;
+  try { r = await fetch('https://api.telegram.org/bot' + token + '/' + metodo, { method: 'POST', body: fd }); }
+  catch (e) { throw new Error('Non riesco a collegarmi a Telegram: controlla la connessione.'); }
+  let d = null; try { d = await r.json(); } catch (e) { /* ignora */ }
+  if (d && d.ok) return d.result;
+  if (r.status === 401 || r.status === 404) throw new Error('Il token non è valido. Ricopialo per intero da BotFather.');
+  throw new Error('Telegram risponde: ' + ((d && d.description) || r.status));
+}
+
+function aggiornaPulsanti() {
+  const ok = !!token && !!$('chat').value.trim();
+  $('bProva').disabled = !ok;
+  $('bCrea').disabled = !ok;
+}
+
+$('token').addEventListener('input', () => { token = $('token').value.trim(); $('bCerca').disabled = !token; aggiornaPulsanti(); });
+$('chat').addEventListener('input', aggiornaPulsanti);
+
+$('bControlla').addEventListener('click', async () => {
+  token = $('token').value.trim();
+  $('bCerca').disabled = !token;
+  if (!token) { messaggio($('esitoBot'), 'errore', 'Incolla prima il token.'); return; }
+  try {
+    const b = await api('getMe');
+    messaggio($('esitoBot'), 'ok', 'Bot trovato: @' + b.username + ' (' + b.first_name + '). Puoi andare al passo 4.');
+  } catch (e) { messaggio($('esitoBot'), 'errore', e.message); }
+});
+
+$('bCerca').addEventListener('click', async () => {
+  const box = $('elencoChat'); box.replaceChildren();
+  try {
+    const agg = await api('getUpdates', { limit: 100, timeout: 0 });
+    const viste = new Map();
+    for (const u of agg) {
+      const m = u.message || u.channel_post || u.edited_message;
+      if (!m || !m.chat) continue;
+      const th = (m.is_topic_message || (m.chat.is_forum && m.message_thread_id)) ? m.message_thread_id : null;
+      const chiave = m.chat.id + '|' + (th == null ? '' : th);
+      const nomeChat = m.chat.title || [m.chat.first_name, m.chat.last_name].filter(Boolean).join(' ') || ('chat ' + m.chat.id);
+      const argom = m.reply_to_message && m.reply_to_message.forum_topic_created ? m.reply_to_message.forum_topic_created.name : '';
+      const e = viste.get(chiave) || { chat: String(m.chat.id), th, nomeChat, tipo: m.chat.type, argom: '', ultimo: '' };
+      if (argom) e.argom = argom;
+      if (m.text) e.ultimo = m.text;
+      viste.set(chiave, e);
+    }
+    if (!viste.size) { messaggio(box, 'errore', 'Non vedo ancora nessun messaggio. Scrivi una parola al bot (o dentro un argomento del gruppo) e ripremi il pulsante.'); return; }
+    for (const e of viste.values()) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chat';
+      const privata = e.tipo === 'private';
+      b.textContent = privata ? 'Chat privata con ' + e.nomeChat : 'Gruppo «' + e.nomeChat + '»' + (e.th != null ? ' · argomento ' + (e.argom ? '«' + e.argom + '»' : e.th) : '');
+      const s = document.createElement('small');
+      s.textContent = 'ultimo messaggio: «' + (e.ultimo || '…').slice(0, 60) + '» · numero chat ' + e.chat + (e.th != null ? ' · argomento ' + e.th : '');
+      b.append(s);
+      b.addEventListener('click', () => {
+        $('chat').value = e.chat; $('argomento').value = e.th == null ? '' : e.th;
+        box.querySelectorAll('.chat').forEach((x) => x.classList.remove('scelta')); b.classList.add('scelta');
+        if (e.th != null && e.argom) $('nomeAtleta').value = $('nomeAtleta').value || e.argom;
+        aggiornaPulsanti();
+      });
+      box.append(b);
+    }
+  } catch (e) { messaggio(box, 'errore', e.message + (/409/.test(e.message) ? ' (il bot è collegato altrove: non usare questo bot per altri programmi).' : '')); }
+});
+
+$('bProva').addEventListener('click', async () => {
+  try {
+    await api('sendMessage', { chat_id: $('chat').value.trim(), message_thread_id: $('argomento').value.trim(), text: '✅ Messaggio di prova dal collegamento con l\'app' });
+    messaggio($('esitoProva'), 'ok', 'Messaggio inviato: controlla su Telegram che sia arrivato nel posto giusto.');
+  } catch (e) { messaggio($('esitoProva'), 'errore', e.message); }
+});
+
+function codice() {
+  const o = { t: token, c: $('chat').value.trim() };
+  const th = $('argomento').value.trim();
+  if (th) o.th = Number(th);
+  return 'AC1.' + btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+$('bCrea').addEventListener('click', () => {
+  if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token)) { messaggio($('esitoCopia'), 'errore', 'Il token non sembra giusto: controllalo al passo 3.'); $('risultato').classList.remove('nascosto'); return; }
+  if (!/^-?\d+$/.test($('chat').value.trim())) { messaggio($('esitoCopia'), 'errore', 'Il numero della chat deve essere fatto solo di cifre (con il meno davanti per i gruppi).'); $('risultato').classList.remove('nascosto'); return; }
+  const c = codice();
+  const nome = $('nomeAtleta').value.trim();
+  $('codice').value = c;
+  $('messaggio').value = (nome ? 'Ciao ' + nome + ', ' : 'Ciao, ') + 'per mandarmi video e resoconto con un solo tocco:\n1) apri l\'app dell\'allenamento: https://fabioopenai.github.io/allenamento-app/\n2) in fondo alla schermata tocca «Collega l\'invio automatico»\n3) incolla questo codice e tocca Collega.\nLo fai una volta sola.\n\n' + c;
+  $('risultato').classList.remove('nascosto');
+  $('esitoCopia').replaceChildren();
+});
+
+async function copia(testo) {
+  try { await navigator.clipboard.writeText(testo); messaggio($('esitoCopia'), 'ok', 'Copiato. Mandalo all\'atleta in un messaggio privato.'); }
+  catch (e) { messaggio($('esitoCopia'), 'errore', 'Non riesco a copiare da solo: seleziona il testo e copialo a mano.'); }
+}
+$('bCopiaMsg').addEventListener('click', () => copia($('messaggio').value));
+$('bCopiaCod').addEventListener('click', () => copia($('codice').value));
+</script>
+</body>
+</html>

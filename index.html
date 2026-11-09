@@ -188,6 +188,7 @@ function toast(testo, ms = 3200) {
   const t = h('div', { class: 'toast', text: testo });
   document.body.append(t);
   setTimeout(() => t.remove(), ms);
+  return t;
 }
 
 function slug(s) {
@@ -243,7 +244,8 @@ const stato = {
   corrente: 0,
   schermoAcceso: null,
   settimana: 1,          // settimana del programma in cui si trova l'atleta
-  cicloFinito: false     // la scheda è stata completata
+  cicloFinito: false,    // la scheda è stata completata
+  invio: null            // collegamento al bot Telegram dell'allenatore { t: codice del bot, c: chat, th: argomento }
 };
 
 let timerSalva = null;
@@ -259,6 +261,7 @@ async function caricaTutto() {
   stato.storico = (await DB.get('kv', 'storico')) || [];
   stato.settimana = Number(await DB.get('kv', 'settimana')) || 1;
   stato.cicloFinito = !!(await DB.get('kv', 'cicloFinito'));
+  stato.invio = (await DB.get('kv', 'invio')) || null;
   if (stato.scheda && stato.settimana > nSettimane()) stato.settimana = nSettimane();
   const ug = await DB.get('kv', 'ultimoGiorno');
   stato.ultimoGiorno = ug === undefined ? null : ug;
@@ -466,6 +469,133 @@ async function condividi({ files = [], text = '', title = '' }) {
   return false;
 }
 
+/* =========================================================
+   Invio automatico a Telegram
+   L'allenatore crea un bot e genera un "codice di collegamento" con la pagina collega-bot.html;
+   l'atleta lo incolla una volta nell'app. Da lì video e resoconto partono con un tocco, senza cercare la chat.
+   ========================================================= */
+function leggiCodice(testo) {
+  try {
+    const m = String(testo || '').match(/AC1\.([A-Za-z0-9_-]+)/);
+    if (!m) return null;
+    const o = JSON.parse(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(String(o.t || ''))) return null;
+    if (!/^-?\d+$/.test(String(o.c))) return null;
+    const th = o.th == null || o.th === '' ? null : Number(o.th);
+    if (th !== null && !Number.isInteger(th)) return null;
+    return { t: o.t, c: String(o.c), th };
+  } catch (e) { return null; }
+}
+
+async function chiamaTelegram(metodo, campi) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(campi)) { if (v != null) fd.append(k, v); }
+  let r;
+  try { r = await fetch(`https://api.telegram.org/bot${stato.invio.t}/${metodo}`, { method: 'POST', body: fd }); }
+  catch (e) { throw new Error('Non riesco a collegarmi a Telegram: controlla la connessione e riprova.'); }
+  let d = null;
+  try { d = await r.json(); } catch (e) { /* risposta non leggibile */ }
+  if (d && d.ok) return d.result;
+  const cod = (d && d.error_code) || r.status;
+  const desc = (d && d.description) || '';
+  if (cod === 401 || cod === 404) throw new Error('Il collegamento non è più valido: chiedi un nuovo codice ' + coachA() + '.');
+  if (cod === 429) throw new Error('Telegram chiede di aspettare un momento: riprova tra poco.');
+  if (cod === 413 || /too big|too large/i.test(desc)) throw new Error('Il video è troppo grande per Telegram (massimo 50 MB).');
+  throw new Error('Telegram non ha accettato l\'invio' + (desc ? ' (' + desc + ')' : '') + '. Avvisa ' + (coachNome() || 'l\'allenatore') + '.');
+}
+
+const campiBase = () => ({ chat_id: stato.invio.c, ...(stato.invio.th != null ? { message_thread_id: String(stato.invio.th) } : {}) });
+
+function spezzaTesto(testo, max = 3800) {
+  const out = []; let cur = '';
+  for (const riga of String(testo).split('\n')) {
+    if ((cur + '\n' + riga).length > max && cur) { out.push(cur); cur = riga; } else { cur = cur ? cur + '\n' + riga : riga; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/* Manda il testo e poi i video; didascalie[k] è la didascalia del video k. */
+async function inviaDiretto({ testo = '', files = [], didascalie = [], progresso = () => {} }) {
+  const parti = testo ? spezzaTesto(testo) : [];
+  const tot = parti.length + files.length;
+  let n = 0;
+  for (const p of parti) { progresso(`Invio ${++n} di ${tot}…`); await chiamaTelegram('sendMessage', { ...campiBase(), text: p }); }
+  for (let k = 0; k < files.length; k++) {
+    progresso(`Invio ${++n} di ${tot}…`);
+    const f = files[k];
+    const come = /webm/.test(f.type) ? 'sendDocument' : 'sendVideo';   // Telegram riconosce come video i file MPEG4
+    await chiamaTelegram(come, { ...campiBase(), [come === 'sendVideo' ? 'video' : 'document']: f,
+      caption: String(didascalie[k] || '').slice(0, 1000), ...(come === 'sendVideo' ? { supports_streaming: 'true' } : {}) });
+  }
+}
+
+async function inviaConProgresso(btn, etichetta, opzioni) {
+  btn.disabled = true;
+  try {
+    await inviaDiretto({ ...opzioni, progresso: (m) => { btn.textContent = m; } });
+    toast('Inviato ' + coachA() + ' ✓', 4000);
+    return true;
+  } catch (e) {
+    toast(e.message, 8000);
+    return false;
+  } finally { btn.disabled = false; btn.textContent = etichetta; }
+}
+
+function didascaliaVideo(i) {
+  const g = stato.scheda.giorni[stato.sess.giorno];
+  return [stato.scheda.atleta, g.nome + (haSettimane() ? ' · Sett. ' + settSess() : ''), g.esercizi[i].nome].filter(Boolean).join(' · ');
+}
+
+function vistaCollega() {
+  stato.vista = 'collega';
+  const pag = h('div', { class: 'pagina' });
+  const esito = h('div');
+  if (stato.invio) {
+    const prova = h('button', { class: 'btn', type: 'button', text: 'Manda un messaggio di prova', onclick: async () => {
+      esito.replaceChildren();
+      const ok = await inviaConProgresso(prova, 'Manda un messaggio di prova', { testo: '✅ Messaggio di prova' + (stato.scheda && stato.scheda.atleta ? ' · ' + stato.scheda.atleta : '') });
+      if (!ok) esito.replaceChildren(h('div', { class: 'errore', text: 'La prova non è riuscita. Se continua, chiedi un nuovo codice ' + coachA() + '.' }));
+    } });
+    pag.append(h('div', { class: 'carta' },
+      h('span', { class: 'etichetta', text: 'Invio automatico' }),
+      h('h2', { text: 'Collegato ✓' }),
+      h('p', { class: 'sotto', text: 'Il video e il resoconto partono direttamente ' + coachA() + ', senza cercare la chat. Serve la connessione.' }),
+      prova, esito,
+      h('button', { class: 'btn testo piccolo', type: 'button', text: 'Scollega', onclick: async () => {
+        if (!confirm('Scollego l\'invio automatico? Per rimetterlo serve di nuovo il codice.')) return;
+        stato.invio = null; await DB.set('kv', 'invio', null).catch(() => {}); vistaCollega();
+      } })
+    ));
+  } else {
+    const campo = h('textarea', { class: 'area', placeholder: 'Incolla qui il codice, quello che inizia con AC1.', 'aria-label': 'Codice di collegamento' });
+    pag.append(h('div', { class: 'carta' },
+      h('span', { class: 'etichetta', text: 'Invio automatico' }),
+      h('h2', { text: 'Collega l\'invio ' + coachA() }),
+      h('p', { class: 'sotto', text: 'Incolla il codice che ti ha mandato ' + (coachNome() || 'l\'allenatore') + ' e tocca Collega. Si fa una volta sola: poi video e resoconto partono con un tocco.' }),
+      campo,
+      h('button', { class: 'btn primario', type: 'button', text: 'Collega', onclick: async () => {
+        esito.replaceChildren();
+        const o = leggiCodice(campo.value);
+        if (!o) { esito.replaceChildren(h('div', { class: 'errore', text: 'Il codice non è valido. Copialo di nuovo per intero dal messaggio, compreso l\'inizio «AC1.».' })); return; }
+        stato.invio = o;
+        try {
+          await chiamaTelegram('sendMessage', { ...campiBase(), text: '✅ Collegamento riuscito' + (stato.scheda && stato.scheda.atleta ? ' · ' + stato.scheda.atleta : '') });
+        } catch (e) {
+          stato.invio = null;
+          esito.replaceChildren(h('div', { class: 'errore', text: e.message }));
+          return;
+        }
+        await DB.set('kv', 'invio', o).catch(() => {});
+        toast('Collegato ✓', 3500);
+        vistaCollega();
+      } }),
+      esito
+    ));
+  }
+  app.replaceChildren(barraSemplice('Invio automatico'), pag);
+}
+
 async function copiaTesto(t) {
   try { await navigator.clipboard.writeText(t); toast('Resoconto copiato: incollalo nella chat ' + coachCon()); }
   catch (e) { toast('Non sono riuscito a copiare. Tieni premuto sul testo per selezionarlo.'); }
@@ -583,6 +713,10 @@ function vistaHome() {
     pag.append(h('button', { class: 'btn', type: 'button', text: 'Info utili ' + coachDi(), onclick: vistaInfo }));
     pag.append(h('button', { class: 'btn', type: 'button', text: `Allenamenti passati (${stato.storico.length})`, onclick: vistaStorico }));
     pag.append(selettoreScheda('Carica una scheda nuova', 'testo piccolo', errori), errori);
+  }
+
+  if (!stato.sess) {
+    pag.append(h('button', { class: 'btn', type: 'button', text: stato.invio ? 'Invio automatico: collegato ✓' : 'Collega l\'invio automatico', onclick: vistaCollega }));
   }
 
   app.replaceChildren(pag);
@@ -819,6 +953,12 @@ async function inviaUnVideo(i) {
   const f = fileVideo(i);
   if (!f) return;
   const g = stato.scheda.giorni[stato.sess.giorno];
+  if (stato.invio) {
+    const t = toast('Invio del video…', 120000);
+    try { await inviaDiretto({ files: [f], didascalie: [didascaliaVideo(i)] }); t.remove(); toast('Video inviato ' + coachA() + ' ✓', 4000); }
+    catch (e) { t.remove(); toast(e.message, 8000); }
+    return;
+  }
   await condividi({ files: [f], text: `${g.nome} — ${g.esercizi[i].nome}`, title: g.esercizi[i].nome });
 }
 
@@ -840,6 +980,21 @@ function creaFine() {
     oninput: (e) => { stato.sess.finale = e.target.value; salvaSess(); riepilogo.textContent = testoResoconto(); }
   });
 
+  const filesDelGiorno = () => {
+    const files = [];
+    for (const i of [...stato.video.keys()].sort((a, b) => a - b)) { const f = fileVideo(i); if (f) files.push(f); }
+    return files;
+  };
+  const etichettaInvio = 'Invia video e resoconto ' + coachA();
+  const bInvia = h('button', { class: 'btn primario', type: 'button', text: etichettaInvio, onclick: async () => {
+    aggiorna();
+    const files = [];
+    const didascalie = [];
+    for (const i of [...stato.video.keys()].sort((a, b) => a - b)) { const f = fileVideo(i); if (f) { files.push(f); didascalie.push(didascaliaVideo(i)); } }
+    if (stato.invio) { await inviaConProgresso(bInvia, etichettaInvio, { testo: testoResoconto(), files, didascalie }); return; }
+    await condividi({ files, text: testoResoconto(), title: 'Resoconto ' + g.nome });
+  } });
+
   passo.append(
     h('h2', { text: 'Allenamento finito' }),
     info,
@@ -848,16 +1003,15 @@ function creaFine() {
     h('div', { class: 'etichetta', text: 'Anteprima del resoconto' }),
     riepilogo,
     h('div', { class: 'spazio' }),
-    h('button', { class: 'btn primario', type: 'button', text: 'Invia video e resoconto ' + coachA(), onclick: async () => {
-      aggiorna();
-      const files = [];
-      for (const i of [...stato.video.keys()].sort((a, b) => a - b)) { const f = fileVideo(i); if (f) files.push(f); }
-      await condividi({ files, text: testoResoconto(), title: 'Resoconto ' + g.nome });
-    } }),
-    h('p', { class: 'sotto', text: 'Si apre il foglio di condivisione: scegli Telegram e poi la chat ' + coachDi() + '. Se il testo non compare, usa "Copia resoconto" e incollalo nella chat.' }),
+    bInvia,
+    stato.invio
+      ? h('p', { class: 'sotto', text: 'Parte direttamente ' + coachA() + ' su Telegram. Se non riesce, riprova oppure usa "Invia con un\'altra app".' })
+      : h('p', { class: 'sotto', text: 'Si apre il foglio di condivisione: scegli Telegram e poi la chat ' + coachDi() + '. Se il testo non compare, usa "Copia resoconto" e incollalo nella chat.' }),
     h('div', { class: 'fila' },
       h('button', { class: 'btn piccolo', type: 'button', text: 'Copia resoconto', onclick: () => { aggiorna(); copiaTesto(testoResoconto()); } }),
-      h('button', { class: 'btn piccolo', type: 'button', text: 'Solo testo ' + coachA(), onclick: () => condividi({ text: testoResoconto(), title: 'Resoconto ' + g.nome }) })
+      stato.invio
+        ? h('button', { class: 'btn piccolo', type: 'button', text: 'Invia con un\'altra app', onclick: async () => { aggiorna(); await condividi({ files: filesDelGiorno(), text: testoResoconto(), title: 'Resoconto ' + g.nome }); } })
+        : h('button', { class: 'btn piccolo', type: 'button', text: 'Solo testo ' + coachA(), onclick: () => condividi({ text: testoResoconto(), title: 'Resoconto ' + g.nome }) })
     ),
     h('button', { class: 'btn ok', type: 'button', text: 'Ho inviato tutto: chiudi l\'allenamento', onclick: chiudiAllenamento })
   );
@@ -1053,7 +1207,17 @@ function apriRegistratore(i, alTermine) {
    ========================================================= */
 (async () => {
   try { await caricaTutto(); } catch (e) { /* si parte comunque */ }
+  let collegatoOra = false;
+  try {
+    const m = location.hash.match(/collega=(AC1\.[A-Za-z0-9_-]+)/);
+    if (m) {
+      const o = leggiCodice(m[1]);
+      if (o) { stato.invio = o; await DB.set('kv', 'invio', o).catch(() => {}); collegatoOra = true; }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (e) { /* ignora */ }
   vistaHome();
+  if (collegatoOra) toast('Invio automatico collegato ✓', 4500);
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
