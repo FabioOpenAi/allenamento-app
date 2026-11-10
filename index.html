@@ -204,19 +204,36 @@ const DB = {
   db: null,
   memoria: { kv: new Map(), video: new Map() },
   persistente: false,
+  errore: false,
+  async apriUnaVolta() {
+    await new Promise((ok, ko) => {
+      const r = indexedDB.open('allenamento', 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('video'); };
+      r.onsuccess = () => { this.db = r.result; ok(); };
+      r.onerror = () => ko(r.error);
+      r.onblocked = () => ko(new Error('archivio bloccato'));
+    });
+    // prova di lettura: su iPhone l'archivio a volte si apre ma non risponde subito
+    await this.tx('kv', 'readonly', (st) => st.get('scheda'));
+  },
+  /* Su iPhone, quando l'app parte dall'icona, l'archivio può non essere pronto al primo colpo:
+     si riprova qualche volta prima di arrendersi. */
   async apri() {
-    try {
-      await new Promise((ok, ko) => {
-        const r = indexedDB.open('allenamento', 1);
-        r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('video'); };
-        r.onsuccess = () => { this.db = r.result; ok(); };
-        r.onerror = () => ko(r.error);
-      });
-      this.persistente = true;
-      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    } catch (e) {
-      this.persistente = false;
+    this.persistente = false; this.errore = false;
+    if (!window.indexedDB) { this.errore = true; return; }
+    for (let t = 0; t < 4; t++) {
+      try {
+        await this.apriUnaVolta();
+        this.persistente = true;
+        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        return;
+      } catch (e) {
+        try { if (this.db) this.db.close(); } catch (x) { /* ignora */ }
+        this.db = null;
+        await new Promise((r) => setTimeout(r, 400 * (t + 1)));
+      }
     }
+    this.errore = true;   // non riesce: l'app non deve far credere che i dati non esistano
   },
   tx(store, modo, fn) {
     return new Promise((ok, ko) => {
@@ -257,8 +274,11 @@ function salvaSess() {
   timerSalva = setTimeout(() => { DB.set('kv', 'sessione', stato.sess).catch(() => {}); }, 250);
 }
 
-async function caricaTutto() {
-  await DB.apri();
+const SEGNO_DATI = 'ac_haDati';   // piccolo segno: su questo telefono una scheda era già stata caricata
+const segnoDati = (v) => { try { if (v) localStorage.setItem(SEGNO_DATI, '1'); else localStorage.removeItem(SEGNO_DATI); } catch (e) { /* ignora */ } };
+const eraGiaUsata = () => { try { return localStorage.getItem(SEGNO_DATI) === '1'; } catch (e) { return false; } };
+
+async function leggiArchivio() {
   stato.scheda = (await DB.get('kv', 'scheda')) || null;
   stato.sess = (await DB.get('kv', 'sessione')) || null;
   stato.storico = (await DB.get('kv', 'storico')) || [];
@@ -271,6 +291,28 @@ async function caricaTutto() {
   stato.ultimoGiorno = ug === undefined ? null : ug;
   if (stato.sess && stato.scheda) await caricaVideoSessione();
   else if (stato.sess) stato.sess = null;
+}
+
+/* Legge tutto dall'archivio del telefono. Se non ci riesce, o se l'archivio risulta vuoto ma l'app
+   era già stata usata, lo dice (stato.problemaArchivio) invece di far credere che non ci sia nulla. */
+async function caricaTutto() {
+  stato.problemaArchivio = null;
+  await DB.apri();
+  if (DB.errore) { stato.problemaArchivio = 'lettura'; return; }
+  let ok = false;
+  for (let t = 0; t < 3 && !ok; t++) {
+    try { await leggiArchivio(); ok = true; }
+    catch (e) { await new Promise((r) => setTimeout(r, 500 * (t + 1))); }
+  }
+  if (!ok) { stato.problemaArchivio = 'lettura'; return; }
+  if (stato.scheda) { segnoDati(true); return; }
+  if (eraGiaUsata()) {   // niente scheda, ma qui era già stata caricata: ricontrolla con calma
+    for (let t = 0; t < 2 && !stato.scheda; t++) {
+      await new Promise((r) => setTimeout(r, 800));
+      try { await leggiArchivio(); } catch (e) { /* ignora */ }
+    }
+    if (stato.scheda) segnoDati(true); else stato.problemaArchivio = 'vuoto';
+  }
 }
 
 async function caricaVideoSessione() {
@@ -332,6 +374,7 @@ function validaScheda(s) {
 async function applicaScheda(s) {
   stato.scheda = s;
   await DB.set('kv', 'scheda', s);
+  segnoDati(true);
   // una scheda nuova chiude l'eventuale allenamento rimasto a metà della vecchia
   if (stato.sess) await eliminaSessione();
   stato.ultimoGiorno = null;
@@ -346,6 +389,7 @@ async function gestisciLinkPersonale() {
   const m = location.hash.match(/[#&]l=(AC2\.[A-Za-z0-9_-]+)/);
   if (!m) return null;
   if (!window.LinkScheda) throw new Error('Non riesco a leggere il link: ricarica la pagina.');
+  if (stato.problemaArchivio === 'lettura') throw new Error('Non riesco a leggere i dati salvati: chiudi del tutto l\'app e riaprila, poi tocca di nuovo il link.');
   const id = window.LinkScheda.idPayload(m[1]);
   const giaCaricato = (await DB.get('kv', 'linkId').catch(() => null)) === id;
   if (giaCaricato && stato.scheda) return { gia: true };
@@ -361,6 +405,14 @@ async function gestisciLinkPersonale() {
   return { nuovo: true, sostituita, collegato: !!invio };
 }
 
+/* Se c'è un allenamento a metà, una scheda nuova lo cancella: va chiesto prima, sempre. */
+function confermaSostituzione() {
+  if (stato.problemaArchivio === 'lettura') { alert('Non riesco a leggere i dati salvati: non carico nulla, per non cancellarli. Chiudi del tutto l\'app e riaprila.'); return false; }
+  if (stato.sess) return confirm('Hai un allenamento iniziato e non chiuso: se carichi una scheda nuova viene cancellato, con i video registrati. Vuoi caricarla lo stesso?');
+  if (stato.scheda) return confirm('Carichi una scheda nuova al posto di quella attuale. I tuoi allenamenti passati restano. Vuoi continuare?');
+  return true;
+}
+
 async function importaScheda(file, contenitoreErrore) {
   const nonValido = (testo) => contenitoreErrore.replaceChildren(h('div', { class: 'errore' },
     h('p', { text: testo }),
@@ -371,12 +423,14 @@ async function importaScheda(file, contenitoreErrore) {
   catch (e) { return nonValido('Il file "' + (file.name || '') + '" non è una scheda per questa app.'); }
   const err = validaScheda(s);
   if (err) return nonValido('Il file "' + (file.name || '') + '" non è una scheda per questa app. ' + err);
+  if (!confermaSostituzione()) return;
   await applicaScheda(s);
   toast('Scheda caricata');
   vistaHome();
 }
 
 async function caricaEsempio() {
+  if (!confermaSostituzione()) return;
   await applicaScheda(JSON.parse(JSON.stringify(SCHEDA_ESEMPIO)));
   toast('Scheda di esempio caricata');
   vistaHome();
@@ -654,8 +708,23 @@ function vistaHome() {
     h('p', { class: 'sotto', text: stato.scheda ? `${stato.scheda.atleta || ''} · ${stato.scheda.periodo || ''}` : 'La tua scheda, un esercizio alla volta.' })
   ));
 
+  if (stato.problemaArchivio === 'lettura') {
+    pag.append(h('div', { class: 'carta' },
+      h('span', { class: 'etichetta', text: 'Attenzione' }),
+      h('h2', { text: 'Non riesco a leggere i tuoi dati' }),
+      h('p', { class: 'sotto', text: 'La tua scheda e i tuoi allenamenti sono probabilmente ancora nel telefono, ma in questo momento non riesco ad aprirli. NON caricare una scheda nuova: rischieresti di cancellarli. Chiudi del tutto l\'app (scorri via la finestra), riaprila e, se serve, riprova qui sotto.' }),
+      h('button', { class: 'btn primario', type: 'button', text: 'Riprova', onclick: async () => {
+        await caricaTutto(); vistaHome();
+      } })
+    ));
+    app.replaceChildren(pag);
+    return;
+  }
   if (!DB.persistente) {
     pag.append(h('div', { class: 'avviso', text: 'Attenzione: su questo telefono non riesco a salvare i dati. Se chiudi l\'app perdi quello che hai inserito.' }));
+  }
+  if (stato.problemaArchivio === 'vuoto' && !stato.scheda) {
+    pag.append(h('div', { class: 'avviso', text: 'Su questo telefono avevi già caricato una scheda, ma ora non la trovo. Prima di caricarla di nuovo, chiudi del tutto l\'app e riaprila: potrebbe tornare. Se non torna, tocca di nuovo il link di ' + (coachNome() || 'l\'allenatore') + '.' }));
   }
 
   if (!stato.scheda) {
