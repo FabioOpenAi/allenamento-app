@@ -95,7 +95,7 @@
 const $ = (id) => document.getElementById(id);
 let scheda = null;
 let linkCreato = '';
-const LIMITE_TELEGRAM = 4000;
+const LIMITE_MESSAGGIO = 3900;   // Telegram accetta messaggi fino a 4096 caratteri: resta un po' di margine
 
 function msg(el, classe, testo) { el.replaceChildren(); if (!testo) return; const d = document.createElement('div'); d.className = classe; d.textContent = testo; el.append(d); }
 function aggiorna() { $('bCrea').disabled = !(scheda && $('approva').checked); }
@@ -155,19 +155,29 @@ $('bCrea').addEventListener('click', async () => {
   if (c.errore) { msg($('esitoCodice'), 'errore', c.errore); return; }
   msg($('esitoCodice'), c.invio ? 'ok' : '', c.invio ? 'Codice del bot valido: l\'invio automatico sarà già collegato.' : '');
   try {
-    const payload = await LinkScheda.creaPayload(scheda, c.invio);
+    const base = new URL('./', location.href).href;
+    const nome = String(scheda.atleta || '').trim().split(/\s+/)[0];
+    const testoMsg = (link) => (nome ? 'Ciao ' + nome : 'Ciao') + ', ecco la tua scheda nell\'app di allenamento. Tocca il link qui sotto: si apre già con la tua scheda' + (c.invio ? ' e collegata all\'invio dei video' : '') + '.\n\n' +
+      'Per averla sempre a portata di mano: su iPhone, in Safari, tocca il tasto di condivisione e «Aggiungi alla schermata Home»; su Android, in Chrome, tocca i tre puntini e «Installa app». Se poi l\'icona si apre senza la scheda, tocca di nuovo questo messaggio.\n\n' + link;
+    // si prova prima con la scheda completa; se il messaggio è troppo lungo per Telegram si toglie qualcosa, un passo alla volta
+    let livello = 0, payload = '', messaggio = '';
+    for (; livello <= 2; livello++) {
+      payload = await LinkScheda.creaPayload(scheda, c.invio, { livello });
+      messaggio = testoMsg(base + '#l=' + payload);
+      if (messaggio.length <= LIMITE_MESSAGGIO) break;
+    }
+    if (livello > 2) livello = 2;
     // prova di rilettura: il link deve restituire la stessa scheda
     const r = await LinkScheda.leggiPayload(payload);
     if (!r.scheda || r.scheda.giorni.length !== scheda.giorni.length) throw new Error('Controllo finale non riuscito: riprova.');
-    const base = new URL('./', location.href).href;
     linkCreato = base + '#l=' + payload;
-    const nome = String(scheda.atleta || '').trim().split(/\s+/)[0];
-    $('messaggio').value = (nome ? 'Ciao ' + nome : 'Ciao') + ', ecco la tua scheda nell\'app di allenamento. Tocca il link qui sotto: si apre già con la tua scheda' + (c.invio ? ' e collegata all\'invio dei video' : '') + '.\n\n' +
-      'Per averla sempre a portata di mano: su iPhone, in Safari, tocca il tasto di condivisione e «Aggiungi alla schermata Home»; su Android, in Chrome, tocca i tre puntini e «Installa app». Se poi l\'icona si apre senza la scheda, tocca di nuovo questo messaggio.\n\n' + linkCreato;
+    $('messaggio').value = messaggio;
     $('risultato').classList.remove('nascosto');
     const n = linkCreato.length;
-    if (n > LIMITE_TELEGRAM) msg($('esitoCrea'), 'avviso', 'Il link è lungo ' + n + ' caratteri: Telegram potrebbe non accettarlo in un messaggio. Mandalo con WhatsApp o per e-mail.');
-    else msg($('esitoCrea'), 'ok', 'Link creato e controllato (' + n + ' caratteri). Va bene per WhatsApp, e-mail e Telegram.');
+    const tolto = livello === 1 ? ' Per farlo stare in un messaggio ho tolto la riga «Come è scritto nella scheda originale» agli esercizi senza dubbi.'
+      : livello === 2 ? ' Per farlo stare in un messaggio ho tolto la riga «Come è scritto nella scheda originale» da tutti gli esercizi.' : '';
+    if (messaggio.length > LIMITE_MESSAGGIO) msg($('esitoCrea'), 'avviso', 'Il link è lungo ' + n + ' caratteri e il messaggio supera il limite di Telegram. Mandalo con WhatsApp o per e-mail.' + tolto);
+    else msg($('esitoCrea'), livello ? 'avviso' : 'ok', 'Link creato e controllato (' + n + ' caratteri). Va bene per Telegram, WhatsApp e e-mail.' + tolto);
   } catch (e) { msg($('esitoCrea'), 'errore', e.message); }
 });
 
