@@ -137,6 +137,7 @@ button, input, textarea { font: inherit; color: inherit; }
 <body>
 <div id="app"></div>
 
+<script src="link.js"></script>
 <script>
 'use strict';
 
@@ -245,6 +246,8 @@ const stato = {
   schermoAcceso: null,
   settimana: 1,          // settimana del programma in cui si trova l'atleta
   cicloFinito: false,    // la scheda è stata completata
+  installaVisto: false,  // il suggerimento "metti l'app sulla Home" è già stato chiuso
+  daLink: false,         // la scheda è arrivata da un link personale (in questa apertura)
   invio: null            // collegamento al bot Telegram dell'allenatore { t: codice del bot, c: chat, th: argomento }
 };
 
@@ -262,6 +265,7 @@ async function caricaTutto() {
   stato.settimana = Number(await DB.get('kv', 'settimana')) || 1;
   stato.cicloFinito = !!(await DB.get('kv', 'cicloFinito'));
   stato.invio = (await DB.get('kv', 'invio')) || null;
+  stato.installaVisto = !!(await DB.get('kv', 'installaVisto'));
   if (stato.scheda && stato.settimana > nSettimane()) stato.settimana = nSettimane();
   const ug = await DB.get('kv', 'ultimoGiorno');
   stato.ultimoGiorno = ug === undefined ? null : ug;
@@ -334,6 +338,27 @@ async function applicaScheda(s) {
   await DB.set('kv', 'ultimoGiorno', null);
   stato.settimana = 1; stato.cicloFinito = false;
   await DB.set('kv', 'settimana', 1); await DB.set('kv', 'cicloFinito', false);
+}
+
+/* Link personale: la scheda (e il collegamento a Telegram) arrivano nel link, dopo il simbolo #.
+   Se lo stesso link è già stato caricato non tocca i progressi; se è un link nuovo sostituisce la scheda. */
+async function gestisciLinkPersonale() {
+  const m = location.hash.match(/[#&]l=(AC2\.[A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  if (!window.LinkScheda) throw new Error('Non riesco a leggere il link: ricarica la pagina.');
+  const id = window.LinkScheda.idPayload(m[1]);
+  const giaCaricato = (await DB.get('kv', 'linkId').catch(() => null)) === id;
+  if (giaCaricato && stato.scheda) return { gia: true };
+  const { scheda, invio } = await window.LinkScheda.leggiPayload(m[1]);
+  const err = validaScheda(scheda);
+  if (err) throw new Error('La scheda nel link non è completa: ' + err + ' Chiedi un nuovo link.');
+  if (stato.scheda && stato.sess && !confirm('Questo link contiene una scheda nuova. Se la carichi, l\'allenamento iniziato e non chiuso viene cancellato. Vuoi caricarla?')) return { saltato: true };
+  const sostituita = !!stato.scheda;
+  await applicaScheda(scheda);
+  await DB.set('kv', 'linkId', id).catch(() => {});
+  if (invio) { stato.invio = invio; await DB.set('kv', 'invio', invio).catch(() => {}); }
+  stato.daLink = true;
+  return { nuovo: true, sostituita, collegato: !!invio };
 }
 
 async function importaScheda(file, contenitoreErrore) {
@@ -636,7 +661,7 @@ function vistaHome() {
   if (!stato.scheda) {
     pag.append(h('div', { class: 'carta' },
       h('h2', { text: 'Per iniziare serve una scheda' }),
-      h('p', { class: 'sotto', text: 'Se vuoi solo vedere come funziona, usa la scheda di esempio: ci metti un minuto e non serve nessun file.' }),
+      h('p', { class: 'sotto', text: 'Se l\'allenatore ti ha mandato un link personale, toccalo: la scheda si carica da sola. Se vuoi solo vedere come funziona, usa la scheda di esempio: ci metti un minuto e non serve nessun file.' }),
       h('button', { class: 'btn primario', type: 'button', text: 'Prova con una scheda di esempio', onclick: caricaEsempio })
     ));
     pag.append(h('div', { class: 'carta' },
@@ -660,6 +685,22 @@ function vistaHome() {
         } })
       ));
     } else {
+      /* Una volta sola, se la scheda è arrivata da un link e l'app non è sulla Home: come metterla */
+      const installata = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+      if (stato.daLink && !stato.installaVisto && !installata) {
+        const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+        const come = ios
+          ? 'Tocca il tasto di condivisione di Safari (il quadrato con la freccia) e scegli «Aggiungi alla schermata Home».'
+          : 'Tocca i tre puntini del browser e scegli «Installa app» (o «Aggiungi a schermata Home»).';
+        pag.append(h('div', { class: 'carta' },
+          h('span', { class: 'etichetta', text: 'Consiglio' }),
+          h('h2', { text: 'Tienila a portata di mano' }),
+          h('p', { class: 'sotto', text: come + ' Se poi l\'icona si apre senza la scheda, tocca di nuovo il link che ti ha mandato ' + (coachNome() || 'l\'allenatore') + '.' }),
+          h('button', { class: 'btn piccolo', type: 'button', text: 'Ho capito', onclick: async () => {
+            stato.installaVisto = true; await DB.set('kv', 'installaVisto', true).catch(() => {}); vistaHome();
+          } })
+        ));
+      }
       /* Scelta della settimana del programma: in cima, prima del giorno, così chi parte a metà scheda la vede subito */
       if (haSettimane() && !stato.cicloFinito) {
         const primaVolta = stato.ultimoGiorno == null && stato.storico.length === 0;
@@ -1216,8 +1257,18 @@ function apriRegistratore(i, alTermine) {
       history.replaceState(null, '', location.pathname + location.search);
     }
   } catch (e) { /* ignora */ }
-  vistaHome();
+  const caricaDaLink = async (avvio) => {
+    let esitoLink = null;
+    try { esitoLink = await gestisciLinkPersonale(); }
+    catch (e) { esitoLink = { errore: e.message }; }
+    if (avvio || !stato.sess || (esitoLink && esitoLink.nuovo)) vistaHome();
+    if (esitoLink && esitoLink.nuovo) toast((esitoLink.sostituita ? 'Scheda nuova caricata ✓' : 'Scheda caricata ✓') + (esitoLink.collegato ? ' Invio automatico collegato ✓' : ''), 5000);
+    if (esitoLink && esitoLink.errore) toast(esitoLink.errore, 9000);
+  };
+  await caricaDaLink(true);
   if (collegatoOra) toast('Invio automatico collegato ✓', 4500);
+  // l'app è già aperta e viene toccato un link nuovo: si aggiorna da sola
+  window.addEventListener('hashchange', () => { if (/[#&]l=AC2\./.test(location.hash)) caricaDaLink(); });
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

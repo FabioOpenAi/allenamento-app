@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Crea il link personale dell'atleta</title>
+<style>
+  :root {
+    --sfondo: #101418; --carta: #1a2128; --carta-2: #232c35; --testo: #f2f5f7; --testo-2: #a3afb9;
+    --linea: #2f3a45; --accento: #2dd4bf; --accento-testo: #06231f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--sfondo); color: var(--testo); font: 17px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 28px; margin: 0; }
+  h2 { font-size: 21px; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .sotto { color: var(--testo-2); }
+  .carta { background: var(--carta); border-radius: 18px; padding: 18px 20px; }
+  .num { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; background: var(--accento); color: var(--accento-testo); font-weight: 800; align-items: center; justify-content: center; margin-right: 10px; }
+  ul { padding-left: 22px; margin: 8px 0; }
+  li { margin: 5px 0; }
+  a { color: var(--accento); }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--carta-2); border-radius: 6px; padding: 1px 6px; font-size: 15px; }
+  label { display: block; font-weight: 700; margin: 12px 0 4px; }
+  input[type=file], textarea { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--linea); background: var(--sfondo); color: var(--testo); font: inherit; }
+  textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+  .spunta { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; margin: 14px 0 0; }
+  .spunta input { width: 22px; height: 22px; margin-top: 3px; flex: none; }
+  button { border: 0; border-radius: 12px; padding: 12px 18px; font: inherit; font-weight: 700; cursor: pointer; background: var(--carta-2); color: var(--testo); margin: 8px 8px 0 0; }
+  button.primario { background: var(--accento); color: var(--accento-testo); }
+  button[disabled] { opacity: .5; cursor: default; }
+  .avviso { background: #3a2a14; color: #ffd9a8; border-radius: 14px; padding: 12px 16px; margin-top: 10px; }
+  .errore { background: #3d1c1c; color: #ffc4c4; border-radius: 14px; padding: 12px 16px; margin-top: 10px; }
+  .ok { background: #12312d; color: #9af0e3; border-radius: 14px; padding: 12px 16px; margin-top: 10px; }
+  .nascosto { display: none; }
+  @media (max-width: 520px) { body { font-size: 16px; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Crea il link personale dell'atleta</h1>
+    <p class="sotto">Un solo link con dentro la scheda (e, se vuoi, il collegamento per mandarti i video). L'atleta lo tocca e l'app si apre già pronta: niente file da salvare e da caricare.</p>
+  </div>
+
+  <div class="avviso"><strong>Importante.</strong> Il link contiene la scheda dell'atleta, quindi dati personali e di salute, e se lo colleghi anche il «codice del bot». Mandalo solo a lui, in un messaggio privato, e non incollarlo in siti per accorciare i link. Questa pagina lavora solo nel tuo computer: non invia e non salva niente.</div>
+
+  <section class="carta">
+    <h2><span class="num">1</span>Scegli la scheda già controllata</h2>
+    <p class="sotto">È il file <code>.json</code> che ha preparato il tuo Claude Code. Se non l'hai ancora controllata, fallo prima con la <a href="anteprima.html" target="_blank" rel="noopener">pagina di controllo</a>.</p>
+    <label for="file">File della scheda</label>
+    <input id="file" type="file">
+    <div id="esitoFile"></div>
+    <label class="spunta nascosto" id="rigaApprova"><input id="approva" type="checkbox"> Ho controllato la scheda e la approvo: può essere mandata all'atleta.</label>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">2</span>Collegamento per ricevere i video (facoltativo)</h2>
+    <p class="sotto">Se hai già creato il bot con la <a href="collega-bot.html" target="_blank" rel="noopener">pagina dedicata</a>, incolla qui il codice di quell'atleta (comincia con <code>AC1.</code>). Così l'invio parte da solo. Se lo lasci vuoto, l'atleta userà il foglio di condivisione del telefono.</p>
+    <label for="codice">Codice del bot (<code>AC1.…</code>)</label>
+    <textarea id="codice" placeholder="Lascia vuoto se non vuoi l'invio automatico"></textarea>
+    <div id="esitoCodice"></div>
+  </section>
+
+  <section class="carta">
+    <h2><span class="num">3</span>Crea il link</h2>
+    <button id="bCrea" class="primario" type="button" disabled>Crea il link</button>
+    <div id="esitoCrea"></div>
+    <div id="risultato" class="nascosto">
+      <label for="messaggio">Messaggio da mandare all'atleta, in privato</label>
+      <textarea id="messaggio" readonly style="min-height:260px"></textarea>
+      <button id="bCopiaMsg" class="primario" type="button">Copia il messaggio</button>
+      <button id="bCopiaLink" type="button">Copia solo il link</button>
+      <button id="bProva" type="button">Prova il link qui</button>
+      <div id="esitoCopia"></div>
+      <p class="sotto">«Prova il link qui» apre l'app in questo browser con la scheda dell'atleta: serve solo per controllare che si apra bene. Se poi vuoi usare l'app per te, ricarica una scheda tua o quella di esempio.</p>
+    </div>
+  </section>
+
+  <section class="carta">
+    <h2>Ogni mese</h2>
+    <ul>
+      <li>Con la scheda nuova ripeti i passi 1-3 e mandi un link nuovo. Quando l'atleta lo tocca, la scheda si sostituisce e lo storico degli allenamenti passati resta.</li>
+      <li>Se l'atleta tocca di nuovo lo stesso link, non succede niente: i suoi progressi non si perdono.</li>
+      <li>Se il telefono cancella i dati dell'app, basta toccare di nuovo il link e la scheda ricompare.</li>
+      <li>Se il link risulta troppo lungo per Telegram, mandalo con WhatsApp o per e-mail.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="link.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let scheda = null;
+let linkCreato = '';
+const LIMITE_TELEGRAM = 4000;
+
+function msg(el, classe, testo) { el.replaceChildren(); if (!testo) return; const d = document.createElement('div'); d.className = classe; d.textContent = testo; el.append(d); }
+function aggiorna() { $('bCrea').disabled = !(scheda && $('approva').checked); }
+
+function conteggio(s) {
+  let esercizi = 0, dubbi = 0;
+  for (const g of s.giorni) for (const e of g.esercizi) { esercizi++; if (e.da_controllare && String(e.da_controllare).trim()) dubbi++; }
+  const sett = Math.max(Number(s.settimane) || 1, ...s.giorni.flatMap((g) => g.esercizi.map((e) => (Array.isArray(e.settimane) ? e.settimane.length : 1))));
+  return { esercizi, dubbi, sett };
+}
+
+$('file').addEventListener('change', async () => {
+  scheda = null; $('approva').checked = false; $('rigaApprova').classList.add('nascosto'); linkCreato = '';
+  $('risultato').classList.add('nascosto'); msg($('esitoCrea'), '', '');
+  const f = $('file').files[0];
+  if (!f) { aggiorna(); return; }
+  try {
+    const s = JSON.parse(await f.text());
+    if (!s || !Array.isArray(s.giorni) || !s.giorni.length || s.giorni.some((g) => !g.nome || !Array.isArray(g.esercizi) || !g.esercizi.length || g.esercizi.some((e) => !e.nome))) {
+      throw new Error('Il file non è una scheda completa: ci sono giorni o esercizi senza nome.');
+    }
+    scheda = s;
+    const c = conteggio(s);
+    $('esitoFile').replaceChildren();
+    const ok = document.createElement('div'); ok.className = 'ok';
+    ok.textContent = (s.atleta || 'Atleta senza nome') + ' · ' + s.giorni.length + ' giorni · ' + c.esercizi + ' esercizi' + (c.sett > 1 ? ' · ' + c.sett + ' settimane' : '') + (s.periodo ? ' · ' + s.periodo : '');
+    $('esitoFile').append(ok);
+    if (c.dubbi) {
+      const a = document.createElement('div'); a.className = 'avviso';
+      a.textContent = 'Attenzione: ' + c.dubbi + (c.dubbi === 1 ? ' esercizio ha' : ' esercizi hanno') + ' ancora punti da controllare. Controllali con la pagina di controllo e correggi con il tuo Claude Code prima di mandare la scheda.';
+      $('esitoFile').append(a);
+    }
+    $('rigaApprova').classList.remove('nascosto');
+  } catch (e) {
+    msg($('esitoFile'), 'errore', e instanceof SyntaxError ? 'Il file non si legge: deve essere il file .json della scheda.' : e.message);
+  }
+  aggiorna();
+});
+$('approva').addEventListener('change', aggiorna);
+
+function leggiCodice() {
+  const t = $('codice').value.trim();
+  if (!t) return { invio: null };
+  try {
+    const m = t.match(/AC1\.([A-Za-z0-9_-]+)/);
+    if (!m) throw 0;
+    const o = JSON.parse(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const inv = LinkScheda.invioValido(o);
+    if (!inv) throw 0;
+    return { invio: inv };
+  } catch (e) { return { errore: 'Il codice del bot non è valido: copialo per intero, compreso l\'inizio «AC1.».' }; }
+}
+
+$('bCrea').addEventListener('click', async () => {
+  msg($('esitoCrea'), '', ''); msg($('esitoCopia'), '', '');
+  const c = leggiCodice();
+  if (c.errore) { msg($('esitoCodice'), 'errore', c.errore); return; }
+  msg($('esitoCodice'), c.invio ? 'ok' : '', c.invio ? 'Codice del bot valido: l\'invio automatico sarà già collegato.' : '');
+  try {
+    const payload = await LinkScheda.creaPayload(scheda, c.invio);
+    // prova di rilettura: il link deve restituire la stessa scheda
+    const r = await LinkScheda.leggiPayload(payload);
+    if (!r.scheda || r.scheda.giorni.length !== scheda.giorni.length) throw new Error('Controllo finale non riuscito: riprova.');
+    const base = new URL('./', location.href).href;
+    linkCreato = base + '#l=' + payload;
+    const nome = String(scheda.atleta || '').trim().split(/\s+/)[0];
+    $('messaggio').value = (nome ? 'Ciao ' + nome : 'Ciao') + ', ecco la tua scheda nell\'app di allenamento. Tocca il link qui sotto: si apre già con la tua scheda' + (c.invio ? ' e collegata all\'invio dei video' : '') + '.\n\n' +
+      'Per averla sempre a portata di mano: su iPhone, in Safari, tocca il tasto di condivisione e «Aggiungi alla schermata Home»; su Android, in Chrome, tocca i tre puntini e «Installa app». Se poi l\'icona si apre senza la scheda, tocca di nuovo questo messaggio.\n\n' + linkCreato;
+    $('risultato').classList.remove('nascosto');
+    const n = linkCreato.length;
+    if (n > LIMITE_TELEGRAM) msg($('esitoCrea'), 'avviso', 'Il link è lungo ' + n + ' caratteri: Telegram potrebbe non accettarlo in un messaggio. Mandalo con WhatsApp o per e-mail.');
+    else msg($('esitoCrea'), 'ok', 'Link creato e controllato (' + n + ' caratteri). Va bene per WhatsApp, e-mail e Telegram.');
+  } catch (e) { msg($('esitoCrea'), 'errore', e.message); }
+});
+
+async function copia(testo, ok) {
+  try { await navigator.clipboard.writeText(testo); msg($('esitoCopia'), 'ok', ok); }
+  catch (e) { msg($('esitoCopia'), 'errore', 'Non riesco a copiare da solo: seleziona il testo e copialo a mano.'); }
+}
+$('bCopiaMsg').addEventListener('click', () => copia($('messaggio').value, 'Messaggio copiato. Incollalo in una chat privata con l\'atleta.'));
+$('bCopiaLink').addEventListener('click', () => copia(linkCreato, 'Link copiato.'));
+$('bProva').addEventListener('click', () => { if (linkCreato) window.open(linkCreato, '_blank', 'noopener'); });
+</script>
+</body>
+</html>

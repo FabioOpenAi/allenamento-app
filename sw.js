@@ -1,6 +1,6 @@
 // Salva i file dell'app sul telefono, così si apre anche in palestra senza rete.
-const NOME_CACHE = 'allenamento-v1';
-const FILE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const NOME_CACHE = 'allenamento-v2';
+const FILE = ['./', './index.html', './link.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(NOME_CACHE).then((c) => c.addAll(FILE)).then(() => self.skipWaiting()));
