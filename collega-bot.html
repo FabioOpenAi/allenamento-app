@@ -138,7 +138,16 @@ async function api(metodo, campi) {
   let d = null; try { d = await r.json(); } catch (e) { /* ignora */ }
   if (d && d.ok) return d.result;
   if (r.status === 401 || r.status === 404) throw new Error('Il token non è valido. Ricopialo per intero da BotFather.');
+  if (r.status === 400) throw new Error('Telegram non accetta la richiesta (400' + ((d && d.description) ? ': ' + d.description : '') + '). Se succede subito dopo aver incollato il token, controlla che nel campo ci sia solo il token, su una riga.');
   throw new Error('Telegram risponde: ' + ((d && d.description) || r.status));
+}
+
+/* Dal testo incollato prende solo il token: toglie spazi, a capo e frasi attaccate, e sostituisce i trattini
+   «strani» che alcuni telefoni mettono al posto del trattino normale. */
+function pulisciToken(testo) {
+  const t = String(testo || '').replace(/[\u2010-\u2015\u2212]/g, '-');
+  const m = t.match(/\d{6,}:[A-Za-z0-9_-]{30,}/);
+  return m ? m[0] : t.trim();
 }
 
 function aggiornaPulsanti() {
@@ -147,13 +156,18 @@ function aggiornaPulsanti() {
   $('bCrea').disabled = !ok;
 }
 
-$('token').addEventListener('input', () => { token = $('token').value.trim(); $('bCerca').disabled = !token; aggiornaPulsanti(); });
+$('token').addEventListener('input', () => {
+  token = pulisciToken($('token').value);
+  if (token && token !== $('token').value.trim() && /^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token)) $('token').value = token;   // il campo mostra solo il token pulito
+  $('bCerca').disabled = !token; aggiornaPulsanti();
+});
 $('chat').addEventListener('input', aggiornaPulsanti);
 
 $('bControlla').addEventListener('click', async () => {
-  token = $('token').value.trim();
+  token = pulisciToken($('token').value);
   $('bCerca').disabled = !token;
   if (!token) { messaggio($('esitoBot'), 'errore', 'Incolla prima il token.'); return; }
+  if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token)) { messaggio($('esitoBot'), 'errore', 'Il testo incollato non sembra un token. Deve essere una sola riga, tipo 1234567890:AAH… senza altro intorno. Copialo toccando il token nel messaggio di BotFather.'); return; }
   try {
     const b = await api('getMe');
     messaggio($('esitoBot'), 'ok', 'Bot trovato: @' + b.username + ' (' + b.first_name + '). Puoi andare al passo 4.');
