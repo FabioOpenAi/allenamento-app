@@ -131,9 +131,11 @@ function messaggio(el, classe, testo) { el.replaceChildren(); const d = document
 
 async function api(metodo, campi) {
   const fd = new FormData();
-  for (const [k, v] of Object.entries(campi || {})) if (v != null && v !== '') fd.append(k, v);
+  let n = 0;
+  for (const [k, v] of Object.entries(campi || {})) if (v != null && v !== '') { fd.append(k, v); n++; }
   let r;
-  try { r = await fetch('https://api.telegram.org/bot' + token + '/' + metodo, { method: 'POST', body: fd }); }
+  // senza campi (es. getMe) niente corpo: un corpo multipart vuoto Telegram lo rifiuta con un 400
+  try { r = await fetch('https://api.telegram.org/bot' + token + '/' + metodo, n ? { method: 'POST', body: fd } : { method: 'POST' }); }
   catch (e) { throw new Error('Non riesco a collegarmi a Telegram: controlla la connessione.'); }
   let d = null; try { d = await r.json(); } catch (e) { /* ignora */ }
   if (d && d.ok) return d.result;
