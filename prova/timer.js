@@ -113,6 +113,7 @@
   function audioPronto(conCamera) {
     try { if (navigator.audioSession) navigator.audioSession.type = conCamera ? 'play-and-record' : 'playback'; } catch (e) { /* ignora */ }
     try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { ac = null; }
+    if (typeof caricaClip === 'function') caricaClip();
   }
   function audioFine() { try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* ignora */ } }
   function bip(freq, dur, vol) {
@@ -168,16 +169,49 @@
       return true;
     } catch (e) { return false; }
   }
-  const zittisci = () => { try { if (haVoce()) speechSynthesis.cancel(); } catch (e) { /* ignora */ } };
-  const AVVISI = 'ac_timer_avvisi';
-  const avvisiSalvati = () => { try { return localStorage.getItem(AVVISI) === 'bip' ? 'bip' : 'voce'; } catch (e) { return 'voce'; } };
+  /* ---------- voce registrata (file audio nella cartella voce/) ---------- */
+  // Le parole registrate si suonano come i bip: precise al centesimo e, su iPhone, anche in silenzioso.
+  const CLIP = ['start', 'stop', 'rest', 'completato'];
+  const clip = {};          // nome → suono pronto
+  let caricoClip = null;
+  function caricaClip() {
+    if (caricoClip || !ac) return caricoClip;
+    caricoClip = Promise.all(CLIP.map(async (n) => {
+      const r = await fetch('voce/' + n + '.mp3');
+      if (!r.ok) throw new Error(n);
+      const dati = await r.arrayBuffer();
+      clip[n] = await new Promise((ok, no) => { const p = ac.decodeAudioData(dati, ok, no); if (p && p.catch) p.catch(no); });
+    })).then(() => true).catch(() => { caricoClip = null; return false; });
+    return caricoClip;
+  }
+  const clipPronte = () => CLIP.every((n) => clip[n]);
+  const inCoda = [];         // suoni programmati, da fermare con Stop
+  function suonaClip(nome, tra = 0) {   // restituisce la durata, per mettere in fila la parola dopo
+    const b = clip[nome];
+    if (!ac || !b) return 0;
+    try {
+      const s = ac.createBufferSource(), g = ac.createGain();
+      s.buffer = b; g.gain.value = 1;
+      s.connect(g); g.connect(ac.destination);
+      s.start(ac.currentTime + Math.max(0, tra));
+      inCoda.push(s); s.onended = () => { const k = inCoda.indexOf(s); if (k >= 0) inCoda.splice(k, 1); };
+      return b.duration;
+    } catch (e) { return 0; }
+  }
+  const zittisci = () => {
+    try { if (haVoce()) speechSynthesis.cancel(); } catch (e) { /* ignora */ }
+    inCoda.splice(0).forEach((s) => { try { s.stop(); } catch (e) { /* ignora */ } });
+  };
+  // scelta ricordata sul telefono (chiave nuova: con la voce registrata si riparte da quella)
+  const AVVISI = 'ac_timer_avvisi2';
+  const avvisiSalvati = () => { try { const v = localStorage.getItem(AVVISI); return ['registrata', 'voce', 'bip'].includes(v) ? v : 'registrata'; } catch (e) { return 'registrata'; } };
 
   /* ---------- schermata di scelta ---------- */
   window.apriTimer = function apriTimer({ i = null, alVideo = () => {}, alResoconto = () => {} } = {}) {
     const es = i != null && stato.sess ? stato.scheda.giorni[stato.sess.giorno].esercizi[i] : null;
     const c = proposta(i);
-    if (!c.avvisi) c.avvisi = avvisiSalvati();
-    if (!haVoce()) c.avvisi = 'bip';
+    c.avvisi = avvisiSalvati();   // scelta unica per tutti gli esercizi
+    if (c.avvisi === 'voce' && !haVoce()) c.avvisi = 'bip';
     const puoFilmare = !!(es && es.video && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
     let filma = puoFilmare && !(stato.video && stato.video.has(i));
     let facing = 'environment';
@@ -222,6 +256,13 @@
       });
       if (!ok) esitoVoce.textContent = '✗ Questo telefono non ha la voce: userò i bip.';
     }
+    async function provaRegistrata() {
+      esitoVoce.textContent = 'Carico la voce registrata…';
+      audioPronto(false);
+      const ok = await caricaClip();
+      if (ok && clipPronte()) { suonaClip('start'); esitoVoce.textContent = '✓ Voce registrata pronta.'; }
+      else esitoVoce.textContent = '✗ Non riesco a caricare la voce registrata: userò la voce del telefono o i bip.';
+    }
 
     function disegna() {
       pag.replaceChildren();
@@ -248,15 +289,23 @@
           stepper('Un giro ogni', 'ogni', 15, 15, 300, true));
       }
       pag.append(tot);
-      if (haVoce()) {
+      {
+        const scelte = [['registrata', '🎙 Voce registrata']].concat(haVoce() ? [['voce', '🗣 Voce telefono']] : [], [['bip', '🔔 Bip']]);
+        const spiega = {
+          registrata: 'Parole registrate: «Start» quando si lavora, «Stop, rest» quando si recupera, «Stop, completato» alla fine. Al secondo giusto. Negli ultimi 3 secondi restano i bip.',
+          voce: 'La voce del telefono dice le stesse parole, ma può arrivare in ritardo e in silenzioso non si sente.',
+          bip: 'Un bip lungo a ogni cambio e tre bip corti negli ultimi 3 secondi.',
+        };
         pag.append(h('div', { class: 'riga' }, h('label', { text: 'Avvisi' }),
-          h('div', { class: 'modi' }, [['voce', '🗣 Voce'], ['bip', '🔔 Bip']].map(([m, t]) =>
+          h('div', { class: 'modi' }, scelte.map(([m, t]) =>
             h('button', { class: 'btn piccolo' + (c.avvisi === m ? ' primario' : ''), type: 'button', text: t, onclick: () => {
               c.avvisi = m; try { localStorage.setItem(AVVISI, m); } catch (e) { /* ignora */ }
+              esitoVoce.textContent = '';
               disegna();
               if (m === 'voce') provaVoce();
+              if (m === 'registrata') provaRegistrata();
             } }))),
-          h('div', { class: 'sotto', text: c.avvisi === 'voce' ? 'Dice «Start» quando si lavora, «Stop, rest» quando si recupera, «Completato» alla fine. Negli ultimi 3 secondi restano i bip.' : 'Un bip lungo a ogni cambio e tre bip corti negli ultimi 3 secondi.' }),
+          h('div', { class: 'sotto', text: spiega[c.avvisi] }),
           esitoVoce));
       }
       if (puoFilmare) {
@@ -277,7 +326,7 @@
     async function avvia() {
       if (i != null && stato.sess) { stato.sess.es[i].timer = { ...c }; salvaSess(); }
       audioPronto(filma);
-      if (c.avvisi === 'voce') sbloccaVoce();
+      if (c.avvisi !== 'bip') sbloccaVoce();   // anche con la registrata: la voce del telefono fa da riserva
       let stream = null;
       if (filma) {
         try {
@@ -367,15 +416,18 @@
       const k = F.findIndex((f) => e < f.a);
       const f = F[k];
       const resto = f.a - e;
-      // la voce del telefono parte con un po' di ritardo: l'avviso della fase dopo si dà mezzo secondo prima
+      // voce registrata: si programma al centesimo un attimo prima del cambio di fase;
+      // voce del telefono: parte con un po' di ritardo, quindi l'avviso si dà mezzo secondo prima
       const prossima = F[k + 1];
-      if (c.avvisi === 'voce' && vocePartita !== false && prossima && resto <= ANTICIPO_VOCE && annunciata !== k + 1) {
+      const anticipo = c.avvisi === 'registrata' && clipPronte() ? 0.3
+        : (c.avvisi === 'voce' || c.avvisi === 'registrata') && haVoce() && vocePartita !== false ? ANTICIPO_VOCE : -1;
+      if (prossima && resto <= anticipo && annunciata !== k + 1) {
         annunciata = k + 1;
-        if (prossima.tipo === 'lavoro' || prossima.tipo === 'giro') annuncia('lavoro');
-        else if (prossima.tipo === 'pausa') annuncia('pausa');
+        if (prossima.tipo === 'lavoro' || prossima.tipo === 'giro') annuncia('lavoro', resto);
+        else if (prossima.tipo === 'pausa') annuncia('pausa', resto);
       }
-      if (c.avvisi === 'voce' && vocePartita !== false && !prossima && resto <= ANTICIPO_VOCE && annunciata !== -2) {
-        annunciata = -2; annuncia('fine');
+      if (!prossima && resto <= anticipo && annunciata !== -2) {
+        annunciata = -2; annuncia('fine', resto);
       }
       if (k !== ultimaFase) {
         const giaDetta = annunciata === k;
@@ -393,9 +445,17 @@
       const sec = Math.ceil(resto);
       if (sec <= 3 && sec >= 1 && sec !== ultimoBip) { ultimoBip = sec; bip(880, 0.12, 0.5); }
     }
-    function annuncia(tipo) {
+    function annuncia(tipo, tra = 0) {
+      // 1) voce registrata, al secondo esatto
+      if (c.avvisi === 'registrata' && clipPronte()) {
+        if (tipo === 'lavoro') suonaClip('start', tra);
+        else if (tipo === 'pausa') suonaClip('rest', tra + suonaClip('stop', tra) + 0.08);
+        else if (tipo === 'fine') suonaClip('completato', tra + suonaClip('stop', tra) + 0.3);
+        return;
+      }
+      // 2) voce del telefono (anche come riserva se la registrata non è caricata);
       // se la voce non è partita l'ultima volta si va subito di bip, per non suonare in ritardo
-      const conVoce = c.avvisi === 'voce' && haVoce() && vocePartita !== false;
+      const conVoce = (c.avvisi === 'voce' || c.avvisi === 'registrata') && haVoce() && vocePartita !== false;
       const bL = () => bip(1320, 0.45, 0.7), bP = () => bip(660, 0.45, 0.6), bF = () => bip(1320, 0.9, 0.7);
       if (tipo === 'lavoro') { if (!(conVoce && parla('Start', 'en-US', true, bL))) bL(); }
       else if (tipo === 'pausa') { if (!(conVoce && parla('Stop. Rest.', 'en-US', true, bP))) bP(); }
