@@ -48,6 +48,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .btn:active { transform: scale(.98); opacity: .9; }
 .btn.primario { background: var(--accento); color: var(--accento-testo); }
 .btn.ok { background: var(--ok); color: var(--ok-testo); }
+.carta.evidenza { border: 2px solid var(--accento); }
 .btn.piccolo { padding: 11px 14px; font-size: 16px; border-radius: 12px; }
 .btn.testo { background: transparent; color: var(--testo-2); font-weight: 600; }
 .btn[disabled] { opacity: .45; }
@@ -289,6 +290,7 @@ async function leggiArchivio() {
   stato.cicloFinito = !!(await DB.get('kv', 'cicloFinito'));
   stato.invio = INVIO_AUTOMATICO ? ((await DB.get('kv', 'invio')) || null) : null;
   stato.installaVisto = !!(await DB.get('kv', 'installaVisto'));
+  stato.resocontoInviato = (await DB.get('kv', 'resocontoInviato')) || null;
   if (stato.scheda && stato.settimana > nSettimane()) stato.settimana = nSettimane();
   const ug = await DB.get('kv', 'ultimoGiorno');
   stato.ultimoGiorno = ug === undefined ? null : ug;
@@ -745,6 +747,7 @@ function vistaHome() {
     ));
   } else {
     const s = stato.scheda;
+    cartaResocontoPeriodo(pag);
     if (stato.sess) {
       const g = s.giorni[stato.sess.giorno];
       const fatti = stato.sess.es.filter((x) => x.fatto).length;
@@ -877,9 +880,9 @@ function vistaStorico() {
 
 /* Tabella di riepilogo: tutti gli allenamenti chiusi, una riga per esercizio */
 const INTESTAZIONE_TABELLA = ['Data', 'Settimana', 'Giorno', 'Esercizio', 'Previsto', 'Kg fatti', 'Ripetizioni', 'Fatica (1-4)', 'Note'];
-function righeTabella() {
+function righeTabella(elenco = stato.storico) {
   const out = [];
-  [...stato.storico].reverse().forEach((r) => {
+  [...elenco].reverse().forEach((r) => {
     const data = new Date(r.data).toLocaleDateString('it-IT');
     (r.righe || []).forEach((x) => out.push([data, r.settimana || '', r.giorno, x.esercizio, x.previsto || '', x.kg || '', x.rep || '', x.fatica || '', x.note || '']));
     if (r.faticaGenerale || (r.finale || '').trim()) out.push([data, r.settimana || '', r.giorno, 'Allenamento nel complesso', '', '', '', r.faticaGenerale || '', (r.finale || '').trim()]);
@@ -887,8 +890,71 @@ function righeTabella() {
   return out;
 }
 const csvCella = (v) => { const t = String(v ?? ''); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
-function testoCsv() { return '\ufeff' + [INTESTAZIONE_TABELLA, ...righeTabella()].map((r) => r.map(csvCella).join(';')).join('\r\n'); }
+function testoCsv(elenco) { return '\ufeff' + [INTESTAZIONE_TABELLA, ...righeTabella(elenco)].map((r) => r.map(csvCella).join(';')).join('\r\n'); }
 function testoTsv() { return [INTESTAZIONE_TABELLA, ...righeTabella()].map((r) => r.map((c) => String(c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n'); }
+
+/* Resoconto completo ogni 5 settimane (richiesta di Andrea, 21/11/2026).
+   Il periodo parte dal primo allenamento chiuso dopo l'ultimo resoconto completo inviato;
+   passate 5 settimane, in Home compare l'invito a mandarlo. I resoconti giornalieri restano come prima. */
+const SETTIMANE_PERIODO = 5;
+function periodoResoconto() {
+  const da = stato.resocontoInviato ? new Date(stato.resocontoInviato).getTime() : 0;
+  const elenco = stato.storico.filter((r) => new Date(r.data).getTime() > da);   // dal più recente al più vecchio
+  if (!elenco.length) return null;
+  const inizio = new Date(elenco[elenco.length - 1].data);
+  const scadenza = new Date(inizio.getTime() + SETTIMANE_PERIODO * 7 * 86400000);
+  return { elenco, inizio, scadenza, maturo: Date.now() >= scadenza.getTime() };
+}
+const dataBreve = (d) => new Date(d).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+function testoResocontoPeriodo(p) {
+  const righe = [...p.elenco].reverse();
+  const fat = righe.map((r) => r.faticaGenerale).filter((x) => x > 0);
+  const media = fat.length ? (fat.reduce((a, b) => a + b, 0) / fat.length).toFixed(1).replace('.', ',') : '';
+  const out = [
+    'RESOCONTO COMPLETO' + (stato.scheda && stato.scheda.atleta ? ' · ' + stato.scheda.atleta : ''),
+    'Dal ' + dataBreve(p.inizio) + ' al ' + dataBreve(Date.now()) + ' (' + SETTIMANE_PERIODO + ' settimane dal primo allenamento)',
+    'Allenamenti fatti: ' + righe.length + (media ? ' · fatica media percepita: ' + media + ' su 4' : ''),
+    '',
+  ];
+  righe.forEach((r) => {
+    const n = (r.righe || []).filter((x) => x.fatto).length;
+    out.push('• ' + new Date(r.data).toLocaleDateString('it-IT') + ' · ' + r.giorno + (r.settimana ? ' · sett. ' + r.settimana : '') + ' · ' + n + (n === 1 ? ' esercizio' : ' esercizi')
+      + (r.faticaGenerale ? ' · fatica ' + r.faticaGenerale + '/4' : '') + ((r.finale || '').trim() ? ' · «' + r.finale.trim() + '»' : ''));
+  });
+  out.push('', 'Il dettaglio di ogni esercizio (kg, ripetizioni, fatica, note) è nel file allegato, da aprire con Fogli o Excel.');
+  return out.join('\n');
+}
+function cartaResocontoPeriodo(pag) {
+  const p = periodoResoconto();
+  if (!p) return;
+  if (!p.maturo && !stato.anticipaResoconto) {
+    // promemoria discreto: quando arriverà il resoconto completo; nella versione di prova si può anticipare per provarlo
+    pag.append(h('p', { class: 'sotto', text: 'Resoconto completo ' + coachPer() + ': il ' + dataBreve(p.scadenza) + ' (' + SETTIMANE_PERIODO + ' settimane dal primo allenamento del ' + dataBreve(p.inizio) + ').' }),
+      h('button', { class: 'btn testo piccolo', type: 'button', text: 'Prova adesso il resoconto completo (solo versione di prova)', onclick: () => { stato.anticipaResoconto = true; vistaHome(); } }));
+    return;
+  }
+  const nome = `resoconto-${SETTIMANE_PERIODO}-settimane_${slug((stato.scheda && stato.scheda.atleta) || 'atleta')}_${new Date().toISOString().slice(0, 10)}.csv`;
+  const bFatto = h('button', { class: 'btn ok nascosto', type: 'button', text: 'Fatto, l\'ho inviato', onclick: async () => {
+    stato.resocontoInviato = new Date().toISOString();
+    stato.anticipaResoconto = false;
+    await DB.set('kv', 'resocontoInviato', stato.resocontoInviato).catch(() => {});
+    toast('Bene! Il prossimo resoconto completo tra ' + SETTIMANE_PERIODO + ' settimane.', 4000);
+    vistaHome();
+  } });
+  pag.append(h('div', { class: 'carta evidenza' },
+    h('span', { class: 'etichetta', text: 'Resoconto completo' }),
+    h('h2', { text: 'Sono passate ' + SETTIMANE_PERIODO + ' settimane' }),
+    h('p', { class: 'sotto', text: 'Dal tuo primo allenamento del ' + dataBreve(p.inizio) + ' ne hai fatti ' + p.elenco.length + '. Manda ' + coachA() + ' il resoconto completo: un riassunto e la tabella con tutti gli esercizi.' }),
+    h('button', { class: 'btn primario', type: 'button', text: 'Invia il resoconto completo ' + coachA(), onclick: async () => {
+      await condividi({ files: [new File([testoCsv(p.elenco)], nome, { type: 'text/csv' })], text: testoResocontoPeriodo(p), title: 'Resoconto completo' });
+      bFatto.classList.remove('nascosto');
+    } }),
+    h('div', { class: 'fila' },
+      h('button', { class: 'btn piccolo', type: 'button', text: 'Copia il riassunto', onclick: () => { copiaTesto(testoResocontoPeriodo(p)); bFatto.classList.remove('nascosto'); } })),
+    h('p', { class: 'sotto', text: 'Se il riassunto non compare insieme al file, usa «Copia il riassunto» e incollalo nella chat. Quando hai inviato, tocca «Fatto».' }),
+    bFatto
+  ));
+}
 
 function vistaTabella() {
   stato.vista = 'tabella';
