@@ -138,18 +138,33 @@
         || vs.find((v) => norm(v).startsWith(lang.slice(0, 2).toLowerCase())) || null;
     } catch (e) { return null; }
   }
-  function sbloccaVoce() {   // su iPhone la voce va «sbloccata» con un tocco: si pronuncia una frase muta
+  // Su iPhone: la voce va «sbloccata» con un tocco (una parola vera a volume zero, non uno spazio vuoto,
+  // che può bloccare la coda); e se si interrompe una frase e se ne avvia subito un'altra, la nuova
+  // viene persa. Quindi si interrompe solo se serve e si riparte dopo un attimo.
+  // Se la voce non parte entro 1,2 secondi suona il bip: mai silenzio.
+  let vocePartita = null;   // null = non ancora provato, true/false = esito dell'ultima prova
+  function sbloccaVoce() {
     if (!haVoce()) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* ignora */ }
+    try { speechSynthesis.resume(); const u = new SpeechSynthesisUtterance('ok'); u.volume = 0; u.rate = 2; speechSynthesis.speak(u); } catch (e) { /* ignora */ }
   }
-  function parla(testo, lang, subito) {
+  function parla(testo, lang, subito, seNonParte, esitoGrezzo) {
     if (!haVoce()) return false;
+    let detto = false;
+    const esito = esitoGrezzo ? (ok) => { if (!detto) { detto = true; esitoGrezzo(ok); } } : null;
     try {
-      if (subito) speechSynthesis.cancel();
+      const occupata = speechSynthesis.speaking || speechSynthesis.pending;
+      if (subito && occupata) speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(testo);
       u.lang = lang; const v = voce(lang); if (v) u.voice = v;
       u.rate = 1.05; u.volume = 1;
-      speechSynthesis.speak(u);
+      let partita = false;
+      u.onstart = () => { partita = true; vocePartita = true; if (esito) esito(true); };
+      u.onerror = () => { if (!partita) { vocePartita = false; if (esito) esito(false); } };
+      const via = () => { try { speechSynthesis.resume(); speechSynthesis.speak(u); } catch (e) { /* ignora */ } };
+      if (subito && occupata) setTimeout(via, 80); else via();
+      setTimeout(() => {
+        if (!partita) { vocePartita = false; if (seNonParte) seNonParte(); if (esito) esito(false); }
+      }, 1200);
       return true;
     } catch (e) { return false; }
   }
@@ -195,6 +210,19 @@
       avvisoLungo.textContent = 'L\'ultimo giro dura ' + fmt(ultimo.d) + ': il video potrebbe essere troppo pesante per Telegram (massimo circa 2\'30").';
     }
 
+    // prova della voce al tocco su «Voce»: dice «Start» e scrive se il telefono l'ha pronunciata davvero
+    const esitoVoce = h('div', { class: 'sotto', style: 'font-weight:700' });
+    function provaVoce() {
+      esitoVoce.textContent = 'Provo la voce…';
+      audioPronto(false); sbloccaVoce();
+      const ok = parla('Start', 'en-US', false, null, (si) => {
+        esitoVoce.textContent = si
+          ? '✓ Il telefono sta parlando. Se non senti nulla, alza il volume e controlla che il telefono non sia in silenzioso.'
+          : '✗ Il telefono non ha fatto partire la voce: durante il timer userò i bip.';
+      });
+      if (!ok) esitoVoce.textContent = '✗ Questo telefono non ha la voce: userò i bip.';
+    }
+
     function disegna() {
       pag.replaceChildren();
       pag.append(
@@ -225,10 +253,11 @@
           h('div', { class: 'modi' }, [['voce', '🗣 Voce'], ['bip', '🔔 Bip']].map(([m, t]) =>
             h('button', { class: 'btn piccolo' + (c.avvisi === m ? ' primario' : ''), type: 'button', text: t, onclick: () => {
               c.avvisi = m; try { localStorage.setItem(AVVISI, m); } catch (e) { /* ignora */ }
-              if (m === 'voce') { sbloccaVoce(); parla('Start', 'en-US'); }
               disegna();
+              if (m === 'voce') provaVoce();
             } }))),
-          h('div', { class: 'sotto', text: c.avvisi === 'voce' ? 'Dice «Start» quando si lavora, «Stop, rest» quando si recupera, «Completato» alla fine. Negli ultimi 3 secondi restano i bip.' : 'Un bip lungo a ogni cambio e tre bip corti negli ultimi 3 secondi.' })));
+          h('div', { class: 'sotto', text: c.avvisi === 'voce' ? 'Dice «Start» quando si lavora, «Stop, rest» quando si recupera, «Completato» alla fine. Negli ultimi 3 secondi restano i bip.' : 'Un bip lungo a ogni cambio e tre bip corti negli ultimi 3 secondi.' }),
+          esitoVoce));
       }
       if (puoFilmare) {
         const cb = h('input', { type: 'checkbox', onchange: (e) => { filma = e.target.checked; totale(); camRiga.classList.toggle('nascosto', !filma); } });
@@ -345,12 +374,14 @@
       if (sec <= 3 && sec >= 1 && sec !== ultimoBip) { ultimoBip = sec; bip(880, 0.12, 0.5); }
     }
     function annuncia(tipo) {
-      const conVoce = c.avvisi === 'voce' && haVoce();
-      if (tipo === 'lavoro') { if (!(conVoce && parla('Start', 'en-US', true))) bip(1320, 0.45, 0.7); }
-      else if (tipo === 'pausa') { if (!(conVoce && parla('Stop. Rest.', 'en-US', true))) bip(660, 0.45, 0.6); }
+      // se la voce non è partita l'ultima volta si va subito di bip, per non suonare in ritardo
+      const conVoce = c.avvisi === 'voce' && haVoce() && vocePartita !== false;
+      const bL = () => bip(1320, 0.45, 0.7), bP = () => bip(660, 0.45, 0.6), bF = () => bip(1320, 0.9, 0.7);
+      if (tipo === 'lavoro') { if (!(conVoce && parla('Start', 'en-US', true, bL))) bL(); }
+      else if (tipo === 'pausa') { if (!(conVoce && parla('Stop. Rest.', 'en-US', true, bP))) bP(); }
       else if (tipo === 'fine') {
-        if (conVoce && parla('Stop.', 'en-US', true)) parla('Completato!', 'it-IT');
-        else bip(1320, 0.9, 0.7);
+        if (conVoce && parla('Stop.', 'en-US', true, bF)) parla('Completato!', 'it-IT');
+        else bF();
       }
     }
     const intervallo = setInterval(tick, 100);
