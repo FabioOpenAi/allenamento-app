@@ -172,6 +172,7 @@
   /* ---------- voce registrata (file audio nella cartella voce/) ---------- */
   // Le parole registrate si suonano come i bip: precise al centesimo e, su iPhone, anche in silenzioso.
   const CLIP = ['start', 'stop', 'rest', 'completato'];
+  const PAUSA_STOP_REST = 0.5;   // silenzio tra «Stop» e «Rest» (con 0,08" erano troppo attaccati)
   const clip = {};          // nome → suono pronto
   let caricoClip = null;
   function caricaClip() {
@@ -315,8 +316,15 @@
           h('button', { class: 'btn piccolo', type: 'button', text: facing === 'environment' ? 'Fotocamera: dietro' : 'Fotocamera: davanti', onclick: (e) => { facing = facing === 'environment' ? 'user' : 'environment'; e.target.textContent = facing === 'environment' ? 'Fotocamera: dietro' : 'Fotocamera: davanti'; } }));
         pag.append(h('label', { class: 'spunta' }, cb,
           h('div', {}, h('div', { text: '🎥 Filma l\'ultimo giro', style: 'font-weight:700' }),
-            h('div', { class: 'sotto', text: 'Appoggia il telefono: la registrazione parte e si ferma da sola, solo sull\'ultimo giro di lavoro.' }))),
+            h('div', { class: 'sotto', text: (stato.video && stato.video.has(i) ? 'Questo esercizio ha già un video: spunta qui se vuoi rifarlo. ' : '')
+              + 'Appoggia il telefono: la registrazione parte e si ferma da sola, solo sull\'ultimo giro di lavoro.' }))),
           camRiga, avvisoLungo);
+      } else {
+        // si dice perché non c'è l'opzione video, così non si resta senza video senza saperlo
+        pag.append(h('p', { class: 'sotto', text: !es
+          ? '🎥 Il video non c\'è nel timer libero: per filmare apri il timer dal pulsante «⏱ Timer» dell\'esercizio.'
+          : !es.video ? '🎥 Per questo esercizio la scheda non chiede il video.'
+          : '🎥 Questo telefono non permette di filmare dal timer: usa «Filma l\'ultima serie» nell\'esercizio.' }));
       }
       pag.append(h('div', { class: 'spazio' }),
         h('button', { class: 'btn primario', type: 'button', text: '▶ Parti tra 5 secondi', onclick: () => avvia() }));
@@ -449,7 +457,7 @@
       // 1) voce registrata, al secondo esatto
       if (c.avvisi === 'registrata' && clipPronte()) {
         if (tipo === 'lavoro') suonaClip('start', tra);
-        else if (tipo === 'pausa') suonaClip('rest', tra + suonaClip('stop', tra) + 0.08);
+        else if (tipo === 'pausa') suonaClip('rest', tra + suonaClip('stop', tra) + PAUSA_STOP_REST);
         else if (tipo === 'fine') suonaClip('completato', tra + suonaClip('stop', tra) + 0.3);
         return;
       }
