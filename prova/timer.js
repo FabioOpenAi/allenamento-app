@@ -109,38 +109,73 @@
   }
 
   /* ---------- suoni ---------- */
+  // Due modi di suonare:
+  // - con la fotocamera accesa: «Web Audio» (preciso al centesimo; su iPhone funziona, anche in silenzioso);
+  // - senza fotocamera: elementi audio come quelli dei video, perché su iPhone il primo modo
+  //   senza fotocamera restava muto (prova di Fabio del 21/11, anche con la suoneria attiva).
   let ac = null;
+  let modoMedia = false;
   function audioPronto(conCamera) {
-    try { if (navigator.audioSession) navigator.audioSession.type = conCamera ? 'play-and-record' : 'playback'; } catch (e) { /* ignora */ }
-    sottofondoMuto(!conCamera);   // con la fotocamera non serve: l'iPhone fa già passare i suoni
+    modoMedia = !conCamera;
+    if (modoMedia) { preparaMedia(); return; }
+    try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) { /* ignora */ }
     try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { ac = null; }
     if (typeof caricaClip === 'function') caricaClip();
   }
-  function audioFine() {
-    sottofondoMuto(false);
+  function audioFine() {   // non ferma i suoni già programmati: «Completato» arriva dopo la fine del timer
     try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* ignora */ }
   }
-  // Su iPhone, senza fotocamera accesa, i suoni della pagina seguono il tasto silenzioso.
-  // Un audio muto in ripetizione fa trattare la pagina come «musica»: così voce e bip passano anche in silenzioso.
-  let muto = null;
-  function sottofondoMuto(acceso) {
-    try {
-      if (!acceso) { if (muto) { muto.pause(); } return; }
-      if (!muto) {
-        const n = 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);   // 1 secondo di silenzio, 8 kHz, 8 bit
-        const scrivi = (o, s) => { for (let k = 0; k < s.length; k++) v.setUint8(o + k, s.charCodeAt(k)); };
-        scrivi(0, 'RIFF'); v.setUint32(4, 36 + n, true); scrivi(8, 'WAVE'); scrivi(12, 'fmt ');
-        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true);
-        v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); scrivi(36, 'data'); v.setUint32(40, n, true);
-        for (let k = 0; k < n; k++) v.setUint8(44 + k, 128);
-        muto = document.createElement('audio');
-        muto.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-        muto.loop = true; muto.setAttribute('playsinline', ''); muto.setAttribute('x-webkit-airplay', 'deny');
-      }
-      const p = muto.play(); if (p && p.catch) p.catch(() => {});
-    } catch (e) { /* ignora */ }
+
+  /* --- suoni con elementi audio (senza fotocamera) --- */
+  const media = {};           // chiave → elemento audio
+  let attese = [];            // suoni programmati
+  const BIP = [[880, 0.12, 0.5], [1320, 0.45, 0.7], [660, 0.45, 0.6], [1320, 0.9, 0.7]];
+  function wavTono(freq, dur, vol) {   // crea un bip come file audio (in memoria, nessun file da scaricare)
+    const sr = 22050, n = Math.round(sr * (dur + 0.03)), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const scrivi = (o, s) => { for (let k = 0; k < s.length; k++) v.setUint8(o + k, s.charCodeAt(k)); };
+    scrivi(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); scrivi(8, 'WAVE'); scrivi(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); scrivi(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let k = 0; k < n; k++) {
+      const t = k / sr, inv = Math.min(1, t / 0.005), smorza = Math.max(0, Math.pow(0.001, t / dur));
+      v.setInt16(44 + k * 2, Math.round(32767 * vol * inv * smorza * Math.sin(2 * Math.PI * freq * t)), true);
+    }
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
+  function elemento(chiave, src) {
+    if (!media[chiave]) {
+      const a = new Audio(); a.preload = 'auto'; a.src = typeof src === 'function' ? src() : src;
+      a.setAttribute('playsinline', ''); a.setAttribute('x-webkit-airplay', 'deny');
+      media[chiave] = a;
+    }
+    return media[chiave];
+  }
+  function preparaMedia() {   // va chiamata dentro un tocco: «sblocca» ogni suono facendolo partire muto
+    const tutti = CLIP.map((n) => elemento(n, 'voce/' + n + '.mp3'))
+      .concat(BIP.map(([f, d, v]) => elemento('b' + f + '_' + d, () => wavTono(f, d, v))));
+    tutti.forEach((a) => {
+      if (a._sbloccato) return;
+      try {
+        a.muted = true;
+        const p = a.play();
+        const fine = () => { a._sbloccato = true; if (!a._vuole) { a.pause(); a.currentTime = 0; } a.muted = false; };
+        if (p && p.then) p.then(fine, () => { a.muted = false; }); else fine();
+      } catch (e) { a.muted = false; }
+    });
+  }
+  function suonaMedia(chiave, tra = 0) {
+    const a = media[chiave];
+    if (!a) return;
+    const via = () => { try { a._vuole = true; a.muted = false; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignora */ } };
+    if (tra > 0.02) attese.push(setTimeout(via, tra * 1000)); else via();
+  }
+  function fermaMedia() {
+    attese.forEach(clearTimeout); attese = [];
+    Object.values(media).forEach((a) => { try { a._vuole = false; a.pause(); } catch (e) { /* ignora */ } });
+  }
+
   function bip(freq, dur, vol) {
+    if (modoMedia) { if (!media['b' + freq + '_' + dur]) elemento('b' + freq + '_' + dur, () => wavTono(freq, dur, vol || 0.6)); return suonaMedia('b' + freq + '_' + dur); }
     if (!ac) return;
     try {
       const o = ac.createOscillator(), g = ac.createGain();
@@ -209,9 +244,11 @@
     })).then(() => true).catch(() => { caricoClip = null; return false; });
     return caricoClip;
   }
-  const clipPronte = () => CLIP.every((n) => clip[n]);
+  const DURATA = { start: 0.78, stop: 0.46, rest: 0.48, completato: 0.84 };   // secondi, dei file in voce/
+  const clipPronte = () => (modoMedia ? CLIP.every((n) => media[n]) : CLIP.every((n) => clip[n]));
   const inCoda = [];         // suoni programmati, da fermare con Stop
   function suonaClip(nome, tra = 0) {   // restituisce la durata, per mettere in fila la parola dopo
+    if (modoMedia) { suonaMedia(nome, tra); return DURATA[nome]; }
     const b = clip[nome];
     if (!ac || !b) return 0;
     try {
@@ -226,6 +263,7 @@
   const zittisci = () => {
     try { if (haVoce()) speechSynthesis.cancel(); } catch (e) { /* ignora */ }
     inCoda.splice(0).forEach((s) => { try { s.stop(); } catch (e) { /* ignora */ } });
+    fermaMedia();
   };
   // scelta ricordata sul telefono (chiave nuova: con la voce registrata si riparte da quella)
   const AVVISI = 'ac_timer_avvisi2';
@@ -283,10 +321,15 @@
     }
     async function provaRegistrata() {
       esitoVoce.textContent = 'Carico la voce registrata…';
-      audioPronto(false);
-      const ok = await caricaClip();
-      if (ok && clipPronte()) { suonaClip('start'); esitoVoce.textContent = '✓ Voce registrata pronta.'; }
-      else esitoVoce.textContent = '✗ Non riesco a caricare la voce registrata: userò la voce del telefono o i bip.';
+      audioPronto(false);   // senza fotocamera: elementi audio
+      const a = media.start;
+      const esito = await new Promise((ok) => {
+        const t = setTimeout(() => ok(false), 3000);
+        a.addEventListener('playing', () => { clearTimeout(t); ok(true); }, { once: true });
+        a.addEventListener('error', () => { clearTimeout(t); ok(false); }, { once: true });
+        suonaClip('start');
+      });
+      esitoVoce.textContent = esito ? '✓ Voce registrata pronta.' : '✗ Non riesco a far partire la voce registrata: userò i bip.';
     }
 
     function disegna() {
