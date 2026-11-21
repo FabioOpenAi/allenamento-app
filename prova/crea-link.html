@@ -42,10 +42,10 @@
 <main>
   <div>
     <h1>Crea il link personale dell'atleta</h1>
-    <p class="sotto">Un solo link con dentro la scheda (e, se vuoi, il collegamento per mandarti i video). L'atleta lo tocca e l'app si apre già pronta: niente file da salvare e da caricare.</p>
+    <p class="sotto">Un solo link con dentro la scheda. L'atleta lo tocca e l'app si apre già pronta: niente file da salvare e da caricare. Video e resoconto te li manda lui dal telefono (WhatsApp, Telegram o altra app).</p>
   </div>
 
-  <div class="avviso"><strong>Importante.</strong> Il link contiene la scheda dell'atleta, quindi dati personali e di salute, e se lo colleghi anche il «codice del bot». Mandalo solo a lui, in un messaggio privato, e non incollarlo in siti per accorciare i link. Questa pagina lavora solo nel tuo computer: non invia e non salva niente.</div>
+  <div class="avviso"><strong>Importante.</strong> Il link contiene la scheda dell'atleta, quindi dati personali e di salute. Mandalo solo a lui, in un messaggio privato, e non incollarlo in siti per accorciare i link. Questa pagina lavora solo nel tuo computer: non invia e non salva niente.</div>
 
   <section class="carta">
     <h2><span class="num">1</span>Scegli la scheda già controllata</h2>
@@ -56,7 +56,8 @@
     <label class="spunta nascosto" id="rigaApprova"><input id="approva" type="checkbox"> Ho controllato la scheda e la approvo: può essere mandata all'atleta.</label>
   </section>
 
-  <section class="carta">
+  <!-- Versione di prova (21/11/2026): niente bot, su richiesta di Andrea. La sezione resta nascosta. -->
+  <section class="carta nascosto">
     <h2><span class="num">2</span>Collegamento per ricevere i video (facoltativo)</h2>
     <p class="sotto">Se hai già creato il bot con la <a href="collega-bot.html" target="_blank" rel="noopener">pagina dedicata</a>, incolla qui il codice di quell'atleta (comincia con <code>AC1.</code>). Così l'invio parte da solo. Se lo lasci vuoto, l'atleta userà il foglio di condivisione del telefono.</p>
     <label for="codice">Codice del bot (<code>AC1.…</code>)</label>
@@ -65,7 +66,7 @@
   </section>
 
   <section class="carta">
-    <h2><span class="num">3</span>Crea il link</h2>
+    <h2><span class="num">2</span>Crea il link</h2>
     <button id="bCrea" class="primario" type="button" disabled>Crea il link</button>
     <div id="esitoCrea"></div>
     <div id="risultato" class="nascosto">

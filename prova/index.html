@@ -253,6 +253,7 @@ const DB = {
 /* =========================================================
    Stato dell'app
    ========================================================= */
+const INVIO_AUTOMATICO = false;   // prova: invio solo manuale (richiesta di Andrea, 21/11/2026)
 const stato = {
   scheda: null,
   sess: null,            // allenamento in corso
@@ -266,6 +267,8 @@ const stato = {
   installaVisto: false,  // il suggerimento "metti l'app sulla Home" è già stato chiuso
   daLink: false,         // la scheda è arrivata da un link personale (in questa apertura)
   invio: null            // collegamento al bot Telegram dell'allenatore { t: codice del bot, c: chat, th: argomento }
+  // VERSIONE DI PROVA (21/11/2026): Andrea non vuole il bot Telegram: l'atleta invia a mano dal foglio di condivisione.
+  // Con false l'app ignora il codice del bot (anche se è nel link) e non mostra «Collega l'invio automatico».
 };
 
 let timerSalva = null;
@@ -284,7 +287,7 @@ async function leggiArchivio() {
   stato.storico = (await DB.get('kv', 'storico')) || [];
   stato.settimana = Number(await DB.get('kv', 'settimana')) || 1;
   stato.cicloFinito = !!(await DB.get('kv', 'cicloFinito'));
-  stato.invio = (await DB.get('kv', 'invio')) || null;
+  stato.invio = INVIO_AUTOMATICO ? ((await DB.get('kv', 'invio')) || null) : null;
   stato.installaVisto = !!(await DB.get('kv', 'installaVisto'));
   if (stato.scheda && stato.settimana > nSettimane()) stato.settimana = nSettimane();
   const ug = await DB.get('kv', 'ultimoGiorno');
@@ -400,9 +403,9 @@ async function gestisciLinkPersonale() {
   const sostituita = !!stato.scheda;
   await applicaScheda(scheda);
   await DB.set('kv', 'linkId', id).catch(() => {});
-  if (invio) { stato.invio = invio; await DB.set('kv', 'invio', invio).catch(() => {}); }
+  if (invio && INVIO_AUTOMATICO) { stato.invio = invio; await DB.set('kv', 'invio', invio).catch(() => {}); }
   stato.daLink = true;
-  return { nuovo: true, sostituita, collegato: !!invio };
+  return { nuovo: true, sostituita, collegato: INVIO_AUTOMATICO && !!invio };
 }
 
 /* Se c'è un allenamento a metà, una scheda nuova lo cancella: va chiesto prima, sempre. */
@@ -828,7 +831,7 @@ function vistaHome() {
 
   pag.append(h('button', { class: 'btn', type: 'button', text: '⏱ Timer libero (tabata, EMOM, tempo)', onclick: () => apriTimer({}) }));
 
-  if (!stato.sess) {
+  if (!stato.sess && INVIO_AUTOMATICO) {
     pag.append(h('button', { class: 'btn', type: 'button', text: stato.invio ? 'Invio automatico: collegato ✓' : 'Collega l\'invio automatico', onclick: vistaCollega }));
   }
 
@@ -1330,7 +1333,7 @@ function apriRegistratore(i, alTermine) {
   try {
     const m = location.hash.match(/collega=(AC1\.[A-Za-z0-9_-]+)/);
     if (m) {
-      const o = leggiCodice(m[1]);
+      const o = INVIO_AUTOMATICO ? leggiCodice(m[1]) : null;
       if (o) { stato.invio = o; await DB.set('kv', 'invio', o).catch(() => {}); collegatoOra = true; }
       history.replaceState(null, '', location.pathname + location.search);
     }
