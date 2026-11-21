@@ -319,8 +319,14 @@
     document.body.append(box);
     schermoAcceso(true);
 
-    let t0 = Date.now(), fermoDa = null, fermoTot = 0, ultimaFase = -1, ultimoBip = -1, finito = false;
+    let t0 = Date.now(), fermoDa = null, fermoTot = 0, ultimaFase = -1, ultimoBip = -1, finito = false, annunciata = null;
+    const ANTICIPO_VOCE = 0.5;
     let rec = null, pezzi = [], recFine = null, recStato = 'no';   // no | in corso | fatto
+    const note = [];   // cosa è successo alla registrazione, per capire un video vuoto
+    const diagnosi = () => {
+      const tr = stream ? stream.getTracks().map((t) => t.kind + ':' + t.readyState).join(',') : 'nessuna';
+      return ['stato ' + recStato, 'pezzi ' + pezzi.length, 'formato ' + ((rec && rec.mimeType) || tipoSupportato() || '?'), 'tracce ' + tr].concat(note).join(' · ');
+    };
     const trascorso = () => ((fermoDa ?? Date.now()) - t0 - fermoTot) / 1000;
     const nomeFase = { prep: 'PREPARATI', lavoro: c.modo === 'tempo' ? 'LAVORO' : 'LAVORO', pausa: c.modo === 'tempo' ? 'RECUPERO' : 'PAUSA', giro: 'VIA' };
 
@@ -329,12 +335,13 @@
       const tipo = tipoSupportato();
       pezzi = [];
       try { rec = new MediaRecorder(stream, { ...(tipo ? { mimeType: tipo } : {}), videoBitsPerSecond: 2500000 }); }
-      catch (e) { try { rec = new MediaRecorder(stream); } catch (x) { rec = null; return; } }
+      catch (e) { note.push('avvio1 ' + (e.name || e)); try { rec = new MediaRecorder(stream); } catch (x) { note.push('avvio2 ' + (x.name || x)); rec = null; recStato = 'fallito'; return; } }
       recFine = new Promise((ok) => {
         rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) pezzi.push(ev.data); };
+        rec.onerror = (ev) => note.push('errore ' + ((ev.error && ev.error.name) || 'sconosciuto'));
         rec.onstop = () => ok(new Blob(pezzi, { type: rec.mimeType || tipo || 'video/mp4' }));
       });
-      rec.start(1000);
+      try { rec.start(1000); } catch (e) { note.push('start ' + (e.name || e)); rec = null; recFine = null; recStato = 'fallito'; return; }
       recStato = 'in corso';
       elRec.classList.remove('nascosto');
     }
@@ -352,7 +359,7 @@
         if (recStato === 'in corso' && e >= recA) fermaRec();
       }
       if (e >= totaleS) {
-        if (ultimaFase !== -2) { ultimaFase = -2; annuncia('fine'); }
+        if (ultimaFase !== -2) { ultimaFase = -2; if (annunciata !== -2) annuncia('fine'); }
         // con la fotocamera aspetta il secondo di margine prima di chiudere
         if (!stream || recStato !== 'in corso') return termina(true);
         elFase.textContent = 'FINITO'; elCifre.textContent = '0'; return;
@@ -360,14 +367,27 @@
       const k = F.findIndex((f) => e < f.a);
       const f = F[k];
       const resto = f.a - e;
+      // la voce del telefono parte con un po' di ritardo: l'avviso della fase dopo si dà mezzo secondo prima
+      const prossima = F[k + 1];
+      if (c.avvisi === 'voce' && vocePartita !== false && prossima && resto <= ANTICIPO_VOCE && annunciata !== k + 1) {
+        annunciata = k + 1;
+        if (prossima.tipo === 'lavoro' || prossima.tipo === 'giro') annuncia('lavoro');
+        else if (prossima.tipo === 'pausa') annuncia('pausa');
+      }
+      if (c.avvisi === 'voce' && vocePartita !== false && !prossima && resto <= ANTICIPO_VOCE && annunciata !== -2) {
+        annunciata = -2; annuncia('fine');
+      }
       if (k !== ultimaFase) {
+        const giaDetta = annunciata === k;
         ultimaFase = k; ultimoBip = -1;
         box.className = 'tm-corsa f-' + f.tipo + (stream ? ' con-cam' : '');
         elFase.textContent = nomeFase[f.tipo];
         elGiro.textContent = f.tipo === 'prep' ? descrizione(c)
           : (c.modo === 'emom' ? 'Giro ' : c.modo === 'tempo' ? 'Serie ' : 'Giro ') + f.giro + ' di ' + nGiri(c);
-        if (f.tipo === 'lavoro' || f.tipo === 'giro') annuncia('lavoro');
-        else if (f.tipo === 'pausa') annuncia('pausa');
+        if (!giaDetta) {
+          if (f.tipo === 'lavoro' || f.tipo === 'giro') annuncia('lavoro');
+          else if (f.tipo === 'pausa') annuncia('pausa');
+        }
       }
       elCifre.textContent = cifre(resto);
       const sec = Math.ceil(resto);
@@ -434,17 +454,29 @@
         } });
         fine.append(bRes);
       }
-      if (video && video.size) {
+      if (video && video.size && i != null && stato.sess) {
+        // il video si salva subito sull'esercizio (prima serviva toccare «Tieni questo video» e si perdeva chiudendo)
         const url = URL.createObjectURL(video);
-        fine.append(h('p', { class: 'sotto', text: 'Video dell\'ultimo giro: guardalo, se va bene tienilo.' }),
-          h('video', { src: url, controls: true, playsinline: true }));
-        const bTieni = h('button', { class: 'btn primario', type: 'button', text: 'Tieni questo video', onclick: async () => {
-          await salvaVideo(i, video, video.type); URL.revokeObjectURL(url); alVideo();
-          bTieni.disabled = true; bTieni.textContent = '✓ Video salvato';
-        } });
-        fine.append(bTieni);
-      } else if (stream && !completo) {
+        const esitoSalva = h('p', { class: 'sotto', style: 'font-weight:700', text: 'Salvo il video…' });
+        fine.append(esitoSalva, h('video', { src: url, controls: true, playsinline: true }));
+        salvaVideo(i, video, video.type).then(() => {
+          alVideo();
+          esitoSalva.textContent = '✓ Video dell\'ultimo giro salvato sull\'esercizio: dopo «Chiudi» lo trovi lì, pronto da inviare.';
+          const bScarta = h('button', { class: 'btn', type: 'button', text: 'Non va bene, scartalo', onclick: async () => {
+            stato.video.delete(i);
+            try { await DB.del('video', stato.sess.id + ':' + i); } catch (e) { /* ignora */ }
+            alVideo(); URL.revokeObjectURL(url);
+            bScarta.disabled = true; bScarta.textContent = 'Video scartato: puoi rifarlo dall\'esercizio';
+            esitoSalva.textContent = '';
+          } });
+          esitoSalva.after(bScarta);
+        }).catch(() => { esitoSalva.textContent = '✗ Non sono riuscito a salvare il video sul telefono.'; });
+      } else if (stream && !completo && recStato === 'no') {
         fine.append(h('p', { class: 'sotto', text: 'Il video non è stato registrato: il timer si è fermato prima dell\'ultimo giro.' }));
+      } else if (stream) {
+        // la fotocamera era aperta ma il video è vuoto: lo si dice, con i dettagli per capire il perché
+        fine.append(h('p', { class: 'sotto', style: 'font-weight:700', text: '✗ Il video non è venuto: il telefono non ha registrato nulla. Puoi filmarlo dall\'esercizio come al solito.' }),
+          h('p', { class: 'sotto', text: 'Dettagli per Claude: ' + diagnosi() }));
       }
       fine.append(h('div', { class: 'spazio' }), h('button', { class: 'btn ok', type: 'button', text: 'Chiudi', onclick: chiudiTutto }));
     }
