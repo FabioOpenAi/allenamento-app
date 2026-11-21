@@ -112,10 +112,34 @@
   let ac = null;
   function audioPronto(conCamera) {
     try { if (navigator.audioSession) navigator.audioSession.type = conCamera ? 'play-and-record' : 'playback'; } catch (e) { /* ignora */ }
+    sottofondoMuto(!conCamera);   // con la fotocamera non serve: l'iPhone fa già passare i suoni
     try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { ac = null; }
     if (typeof caricaClip === 'function') caricaClip();
   }
-  function audioFine() { try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* ignora */ } }
+  function audioFine() {
+    sottofondoMuto(false);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch (e) { /* ignora */ }
+  }
+  // Su iPhone, senza fotocamera accesa, i suoni della pagina seguono il tasto silenzioso.
+  // Un audio muto in ripetizione fa trattare la pagina come «musica»: così voce e bip passano anche in silenzioso.
+  let muto = null;
+  function sottofondoMuto(acceso) {
+    try {
+      if (!acceso) { if (muto) { muto.pause(); } return; }
+      if (!muto) {
+        const n = 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);   // 1 secondo di silenzio, 8 kHz, 8 bit
+        const scrivi = (o, s) => { for (let k = 0; k < s.length; k++) v.setUint8(o + k, s.charCodeAt(k)); };
+        scrivi(0, 'RIFF'); v.setUint32(4, 36 + n, true); scrivi(8, 'WAVE'); scrivi(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true);
+        v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); scrivi(36, 'data'); v.setUint32(40, n, true);
+        for (let k = 0; k < n; k++) v.setUint8(44 + k, 128);
+        muto = document.createElement('audio');
+        muto.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+        muto.loop = true; muto.setAttribute('playsinline', ''); muto.setAttribute('x-webkit-airplay', 'deny');
+      }
+      const p = muto.play(); if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* ignora */ }
+  }
   function bip(freq, dur, vol) {
     if (!ac) return;
     try {
@@ -221,7 +245,7 @@
     const pag = h('div', { class: 'tm-pag' });
     box.append(pag);
     document.body.append(box);
-    const chiudi = () => box.remove();
+    const chiudi = () => { box.remove(); audioFine(); };
 
     const stepper = (etichetta, chiave, passo, min, max, comeTempo) => {
       const v = h('div', { class: 'stepper-v' });
