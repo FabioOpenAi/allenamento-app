@@ -127,10 +127,42 @@
     } catch (e) { /* ignora */ }
   }
 
+  /* ---------- voce ---------- */
+  // Usa la voce del telefono (sintesi vocale del sistema): nessun file audio, nessun costo, funziona anche senza rete.
+  const haVoce = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+  function voce(lang) {
+    try {
+      const vs = speechSynthesis.getVoices() || [];
+      const norm = (v) => String(v.lang || '').replace('_', '-').toLowerCase();
+      return vs.find((v) => norm(v) === lang.toLowerCase() && v.localService) || vs.find((v) => norm(v) === lang.toLowerCase())
+        || vs.find((v) => norm(v).startsWith(lang.slice(0, 2).toLowerCase())) || null;
+    } catch (e) { return null; }
+  }
+  function sbloccaVoce() {   // su iPhone la voce va «sbloccata» con un tocco: si pronuncia una frase muta
+    if (!haVoce()) return;
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* ignora */ }
+  }
+  function parla(testo, lang, subito) {
+    if (!haVoce()) return false;
+    try {
+      if (subito) speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(testo);
+      u.lang = lang; const v = voce(lang); if (v) u.voice = v;
+      u.rate = 1.05; u.volume = 1;
+      speechSynthesis.speak(u);
+      return true;
+    } catch (e) { return false; }
+  }
+  const zittisci = () => { try { if (haVoce()) speechSynthesis.cancel(); } catch (e) { /* ignora */ } };
+  const AVVISI = 'ac_timer_avvisi';
+  const avvisiSalvati = () => { try { return localStorage.getItem(AVVISI) === 'bip' ? 'bip' : 'voce'; } catch (e) { return 'voce'; } };
+
   /* ---------- schermata di scelta ---------- */
   window.apriTimer = function apriTimer({ i = null, alVideo = () => {}, alResoconto = () => {} } = {}) {
     const es = i != null && stato.sess ? stato.scheda.giorni[stato.sess.giorno].esercizi[i] : null;
     const c = proposta(i);
+    if (!c.avvisi) c.avvisi = avvisiSalvati();
+    if (!haVoce()) c.avvisi = 'bip';
     const puoFilmare = !!(es && es.video && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
     let filma = puoFilmare && !(stato.video && stato.video.has(i));
     let facing = 'environment';
@@ -188,6 +220,16 @@
           stepper('Un giro ogni', 'ogni', 15, 15, 300, true));
       }
       pag.append(tot);
+      if (haVoce()) {
+        pag.append(h('div', { class: 'riga' }, h('label', { text: 'Avvisi' }),
+          h('div', { class: 'modi' }, [['voce', '🗣 Voce'], ['bip', '🔔 Bip']].map(([m, t]) =>
+            h('button', { class: 'btn piccolo' + (c.avvisi === m ? ' primario' : ''), type: 'button', text: t, onclick: () => {
+              c.avvisi = m; try { localStorage.setItem(AVVISI, m); } catch (e) { /* ignora */ }
+              if (m === 'voce') { sbloccaVoce(); parla('Start', 'en-US'); }
+              disegna();
+            } }))),
+          h('div', { class: 'sotto', text: c.avvisi === 'voce' ? 'Dice «Start» quando si lavora, «Stop, rest» quando si recupera, «Completato» alla fine. Negli ultimi 3 secondi restano i bip.' : 'Un bip lungo a ogni cambio e tre bip corti negli ultimi 3 secondi.' })));
+      }
       if (puoFilmare) {
         const cb = h('input', { type: 'checkbox', onchange: (e) => { filma = e.target.checked; totale(); camRiga.classList.toggle('nascosto', !filma); } });
         cb.checked = filma;
@@ -206,6 +248,7 @@
     async function avvia() {
       if (i != null && stato.sess) { stato.sess.es[i].timer = { ...c }; salvaSess(); }
       audioPronto(filma);
+      if (c.avvisi === 'voce') sbloccaVoce();
       let stream = null;
       if (filma) {
         try {
@@ -280,7 +323,7 @@
         if (recStato === 'in corso' && e >= recA) fermaRec();
       }
       if (e >= totaleS) {
-        if (ultimaFase !== -2) { ultimaFase = -2; bip(1320, 0.9, 0.7); }
+        if (ultimaFase !== -2) { ultimaFase = -2; annuncia('fine'); }
         // con la fotocamera aspetta il secondo di margine prima di chiudere
         if (!stream || recStato !== 'in corso') return termina(true);
         elFase.textContent = 'FINITO'; elCifre.textContent = '0'; return;
@@ -294,12 +337,21 @@
         elFase.textContent = nomeFase[f.tipo];
         elGiro.textContent = f.tipo === 'prep' ? descrizione(c)
           : (c.modo === 'emom' ? 'Giro ' : c.modo === 'tempo' ? 'Serie ' : 'Giro ') + f.giro + ' di ' + nGiri(c);
-        if (f.tipo === 'lavoro' || f.tipo === 'giro') bip(1320, 0.45, 0.7);
-        else if (f.tipo === 'pausa') bip(660, 0.45, 0.6);
+        if (f.tipo === 'lavoro' || f.tipo === 'giro') annuncia('lavoro');
+        else if (f.tipo === 'pausa') annuncia('pausa');
       }
       elCifre.textContent = cifre(resto);
       const sec = Math.ceil(resto);
       if (sec <= 3 && sec >= 1 && sec !== ultimoBip) { ultimoBip = sec; bip(880, 0.12, 0.5); }
+    }
+    function annuncia(tipo) {
+      const conVoce = c.avvisi === 'voce' && haVoce();
+      if (tipo === 'lavoro') { if (!(conVoce && parla('Start', 'en-US', true))) bip(1320, 0.45, 0.7); }
+      else if (tipo === 'pausa') { if (!(conVoce && parla('Stop. Rest.', 'en-US', true))) bip(660, 0.45, 0.6); }
+      else if (tipo === 'fine') {
+        if (conVoce && parla('Stop.', 'en-US', true)) parla('Completato!', 'it-IT');
+        else bip(1320, 0.9, 0.7);
+      }
     }
     const intervallo = setInterval(tick, 100);
     tick();
@@ -315,7 +367,7 @@
         audioPronto(!!stream);
       }
     });
-    bStop.addEventListener('click', () => termina(false));
+    bStop.addEventListener('click', () => { zittisci(); termina(false); });
 
     async function termina(completo) {
       if (finito) return;
@@ -340,7 +392,7 @@
       box.append(fine);
       fine.append(h('h2', { text: completo ? 'Finito! 💪' : 'Timer fermato' }), h('p', { class: 'sotto', text: testo }));
       const chiudiTutto = () => {
-        box.remove(); alChiudi();
+        zittisci(); box.remove(); alChiudi();
         if (stato.vista !== 'allenamento') schermoAcceso(false);
       };
       if (i != null && stato.sess) {
@@ -368,5 +420,5 @@
   }
 
   // per le prove
-  window.__timer = { secondiDa, serieDa, fasi, descrizione, proposta };
+  window.__timer = { secondiDa, serieDa, fasi, descrizione, proposta, voce };
 })();
