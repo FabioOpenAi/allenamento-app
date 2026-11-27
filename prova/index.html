@@ -75,8 +75,11 @@ button, input, textarea { font: inherit; color: inherit; }
 .barra .contatore { min-width: 84px; text-align: right; color: var(--testo-2); font-variant-numeric: tabular-nums; }
 .progresso { height: 4px; background: var(--linea); }
 .progresso > div { height: 100%; width: 0; background: var(--accento); transition: width .25s; }
-.scorri { flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; }
-.passo { min-height: 100%; scroll-snap-align: start; scroll-snap-stop: always; padding: 18px 16px calc(var(--basso) + 22px); display: flex; flex-direction: column; gap: 14px; }
+/* scorrimento libero (27/11/2026): con l'aggancio obbligatorio, negli esercizi più alti dello schermo l'iPhone saltava
+   all'esercizio dopo e i pulsanti in fondo non si riuscivano a toccare. Si passa al successivo con «Fatto» o «Salta». */
+.scorri { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.passo + .passo { border-top: 2px solid var(--linea); }
+.passo { min-height: 100%; padding: 18px 16px calc(var(--basso) + 22px); display: flex; flex-direction: column; gap: 14px; }
 .passo h2 { font-size: 28px; line-height: 1.15; letter-spacing: -.3px; }
 .badge { align-self: flex-start; font-size: 13px; font-weight: 700; letter-spacing: .6px; padding: 5px 10px; border-radius: 999px; background: #3a2a14; color: var(--evid); }
 .badge.video { background: #12312d; color: var(--accento); }
@@ -1013,10 +1016,16 @@ function vistaAllenamento() {
   aggiorna(Math.min(stato.corrente, tot));
 
   const passi = [...scorri.children];
-  const osserva = new IntersectionObserver((voci) => {
-    voci.forEach((v) => { if (v.isIntersecting) aggiorna(passi.indexOf(v.target)); });
-  }, { root: scorri, threshold: 0.6 });
-  passi.forEach((p) => osserva.observe(p));
+  // esercizio corrente = l'ultimo il cui inizio è salito sopra il primo terzo dello schermo
+  let attesa = null;
+  const calcola = () => {
+    attesa = null;
+    const soglia = scorri.scrollTop + scorri.clientHeight * 0.35;
+    let k = 0;
+    passi.forEach((p, j) => { if (p.offsetTop <= soglia) k = j; });
+    if (k !== stato.corrente) aggiorna(k);
+  };
+  scorri.addEventListener('scroll', () => { if (!attesa) attesa = requestAnimationFrame(calcola); }, { passive: true });
   scorri._aggiorna = () => aggiorna(stato.corrente);
 
   // torna all'esercizio in cui eri
